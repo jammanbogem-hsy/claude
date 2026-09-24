@@ -1,0 +1,856 @@
+<meta charset="utf-8">
+<title>무한 통로</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;900&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #101211;
+    --void-2: #171a18;
+    --rule: #2c312d;
+    --text: #e7eae4;
+    --muted: #98a099;
+    --paper: #eef0eb;
+    --card: #ffffff;
+    --edge: #cdd2cb;
+    --ink: #141614;
+    --ink-2: #4a514b;
+    --sign: #f4c20d;
+    --exit: #1e9e5a;
+    --alarm: #d8392b;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { min-height: 100%; }
+  body {
+    background: var(--void);
+    color: var(--text);
+    font: 15px/1.6 "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    padding-inline: 16px;
+    margin: 0;
+    word-break: keep-all;
+  }
+  button { font: inherit; }
+  :focus-visible { outline: 3px solid var(--sign); outline-offset: 2px; }
+
+  .app { max-width: 980px; margin: 0 auto; padding-block: 18px 36px; display: grid; gap: 14px; }
+
+  /* 상단 */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .mark { display: inline-flex; align-items: center; gap: 10px; background: var(--sign); color: var(--ink); border-radius: 3px; padding: 5px 14px 5px 5px; }
+  .mark .n { background: var(--ink); color: var(--sign); font: 900 24px/1 "Gothic A1", sans-serif; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 2px; }
+  .mark .t { display: grid; line-height: 1.1; }
+  .mark .t b { font: 900 19px/1.1 "Gothic A1", sans-serif; letter-spacing: -0.01em; }
+  .mark .t span { font: 600 10px/1.2 "IBM Plex Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+  .stats { display: flex; gap: 14px; align-items: center; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .stats b { font: 600 14px "IBM Plex Mono", monospace; color: var(--text); font-variant-numeric: tabular-nums; }
+  .ghost { background: transparent; border: 1px solid var(--rule); color: var(--text); border-radius: 4px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+  .ghost:hover { border-color: var(--muted); }
+
+  /* 노선도 */
+  .route { position: relative; }
+  .route .track, .route .fill { position: absolute; top: 9px; height: 4px; border-radius: 2px; left: calc(100% / 18); }
+  .route .track { right: calc(100% / 18); background: var(--rule); }
+  .route .fill { width: 0; background: var(--sign); transition: width .6s ease; }
+  .line { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(9, 1fr); position: relative; }
+  .line li { display: grid; justify-items: center; gap: 3px; }
+  .dot { width: 22px; height: 22px; border-radius: 50%; background: var(--void); border: 4px solid var(--rule); transition: all .3s; }
+  .lbl { font: 500 11px "IBM Plex Mono", monospace; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .line li.passed .dot { background: var(--sign); border-color: var(--sign); }
+  .line li.current .dot { border-color: var(--sign); box-shadow: 0 0 0 5px rgba(244, 194, 13, .22); }
+  .line li.current .lbl { color: var(--sign); }
+  .line li.goal .dot { border-color: var(--exit); }
+  .line li.goal .lbl { color: #5fcf92; }
+
+  /* 통로 화면 */
+  .scene { position: relative; border-radius: 6px; overflow: hidden; background: #000; box-shadow: 0 0 0 1px var(--rule), 0 30px 60px -30px rgba(0, 0, 0, .9); }
+  .scene canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .whiteout { position: absolute; inset: 0; background: #f5f7f2; opacity: 0; pointer-events: none; }
+  .blackout { position: absolute; inset: 0; background: #050505; opacity: 0; pointer-events: none; }
+  .toast { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); background: rgba(14, 16, 15, .92); color: var(--text); padding: 8px 14px; border-radius: 4px; font-size: 14px; line-height: 1.45; text-align: center; }
+  .toast b { color: var(--sign); font-family: "Gothic A1", sans-serif; font-weight: 900; margin-right: 6px; }
+  .tag { position: absolute; left: 10px; bottom: 10px; font: 600 11px "IBM Plex Mono", monospace; letter-spacing: .08em; color: rgba(20, 22, 20, .75); background: rgba(238, 240, 235, .75); padding: 3px 7px; border-radius: 3px; }
+
+  /* 안내판 (문제) */
+  .board { background: var(--paper); color: var(--ink); border-radius: 6px; overflow: hidden; }
+  .board :focus-visible { outline-color: var(--ink); }
+  .board-head { display: flex; align-items: center; gap: 10px; background: var(--sign); padding: 8px 16px; font: 700 14px "Gothic A1", sans-serif; flex-wrap: wrap; }
+  .chip { background: var(--ink); color: var(--sign); padding: 2px 8px; border-radius: 3px; font-size: 12px; letter-spacing: .04em; }
+  .board-head .goal { margin-left: auto; font: 600 12px "IBM Plex Mono", monospace; }
+  .board-body { padding: 18px 16px 20px; display: grid; gap: 16px; }
+  .q { font: 700 clamp(18px, 2.6vw, 22px)/1.45 "Gothic A1", sans-serif; margin: 0; text-wrap: balance; max-width: 38em; }
+  .seq { display: block; margin-top: 8px; font: 600 clamp(22px, 4vw, 30px)/1.3 "IBM Plex Mono", monospace; letter-spacing: .02em; }
+  .stroop { display: block; margin-top: 6px; font: 900 48px/1.2 "Gothic A1", sans-serif; }
+  .hint { font-size: 13px; color: var(--ink-2); margin: -6px 0 0; }
+
+  .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .opt { display: flex; align-items: center; gap: 12px; text-align: left; background: var(--card); border: 1.5px solid var(--edge); border-radius: 5px; padding: 12px 14px; font: 500 16px/1.3 "IBM Plex Sans KR", sans-serif; color: var(--ink); cursor: pointer; transition: border-color .15s, transform .08s; }
+  .opt:hover { border-color: var(--ink); }
+  .opt:active { transform: translateY(1px); }
+  kbd { font: 600 12px "IBM Plex Mono", monospace; min-width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: 3px; background: var(--ink); color: var(--paper); padding: 0 5px; flex: none; }
+
+  .dir { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dir button { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; text-align: left; background: var(--card); color: var(--ink); border: 1.5px solid var(--edge); border-radius: 5px; padding: 14px 16px; cursor: pointer; transition: border-color .15s, transform .08s; }
+  .dir button:hover { border-color: var(--ink); }
+  .dir button:active { transform: translateY(1px); }
+  .dir button kbd { grid-row: span 2; }
+  .dir b { font: 900 19px/1.25 "Gothic A1", sans-serif; }
+  .dir small { color: var(--ink-2); font-size: 13px; }
+  .dir .fwd { grid-template-columns: 1fr auto; text-align: right; }
+  .dir .fwd kbd { grid-column: 2; grid-row: 1 / span 2; }
+  .dir .fwd b, .dir .fwd small { grid-column: 1; }
+
+  .ansform { display: flex; gap: 10px; }
+  .ansform input { flex: 1; min-width: 0; font: 600 20px "IBM Plex Mono", "IBM Plex Sans KR", monospace; padding: 12px 14px; border: 1.5px solid var(--edge); border-radius: 5px; background: var(--card); color: var(--ink); color-scheme: light; }
+  .ansform input:focus { border-color: var(--ink); outline: none; }
+  .ansform input.shake { animation: shake .3s; border-color: var(--alarm); }
+  .go { background: var(--ink); color: var(--sign); border: 0; border-radius: 5px; padding: 0 22px; font: 900 16px "Gothic A1", sans-serif; cursor: pointer; }
+  @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+  details.ref { font-size: 13px; color: var(--ink-2); }
+  details.ref summary { cursor: pointer; width: max-content; max-width: 100%; }
+  details.ref[open] summary { margin-bottom: 8px; }
+
+  /* 정상 통로 기준표 */
+  .norm { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .norm div { background: var(--card); border: 1px solid #d6dad3; border-radius: 4px; padding: 8px 10px; display: grid; }
+  .norm strong { font: 600 20px/1.2 "IBM Plex Mono", monospace; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .norm span { font-size: 12px; color: var(--ink-2); line-height: 1.35; }
+
+  /* 오버레이 */
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(8, 9, 8, .84); z-index: 10; overflow-y: auto; }
+  .card { width: min(580px, 100%); background: var(--paper); color: var(--ink); border-radius: 6px; overflow: hidden; box-shadow: 0 40px 80px -30px #000; }
+  .card :focus-visible { outline-color: var(--ink); }
+  .card-head { background: var(--sign); padding: 10px 18px; font: 900 18px "Gothic A1", sans-serif; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .card-head span { font: 600 11px "IBM Plex Mono", monospace; letter-spacing: .12em; }
+  .card-body { padding: 18px; display: grid; gap: 14px; }
+  .card h2 { margin: 0; font: 900 clamp(24px, 5vw, 30px)/1.25 "Gothic A1", sans-serif; text-wrap: balance; }
+  .card p { margin: 0; }
+  .rules { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+  .rules b { font-weight: 600; }
+  .sect { font: 600 11px "IBM Plex Mono", monospace; letter-spacing: .12em; color: var(--ink-2); text-transform: uppercase; }
+  .primary { background: var(--ink); color: var(--sign); border: 0; border-radius: 5px; padding: 14px 18px; font: 900 17px "Gothic A1", sans-serif; cursor: pointer; width: 100%; }
+  .primary:hover { background: #262a27; }
+  .big { font: 900 clamp(48px, 12vw, 72px)/1 "Gothic A1", sans-serif; letter-spacing: -0.02em; }
+  .card.fail .card-head { background: var(--alarm); color: #fff; }
+  .card.fail .big { color: var(--alarm); }
+  .why { background: var(--card); border: 1px solid #d6dad3; border-radius: 4px; padding: 10px 12px; }
+  .why .sect { display: block; margin-bottom: 2px; }
+  .card.win .card-head { background: var(--exit); color: #fff; }
+  .card.win { background: linear-gradient(#fbfcf8, var(--paper)); }
+  .wins { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .wins div { background: var(--card); border: 1px solid #d6dad3; border-radius: 4px; padding: 8px 10px; display: grid; }
+  .wins strong { font: 600 22px/1.2 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .wins span { font-size: 12px; color: var(--ink-2); }
+
+  @media (max-width: 560px) {
+    .choices { grid-template-columns: 1fr; }
+    .dir button { padding: 12px; column-gap: 8px; }
+    .dir b { font-size: 17px; }
+    .lbl { font-size: 10px; }
+    .dot { width: 18px; height: 18px; border-width: 3px; }
+    .route .track, .route .fill { top: 7px; }
+    .norm, .wins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stroop { font-size: 40px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="mark" aria-label="무한 통로">
+      <span class="n" aria-hidden="true">8</span>
+      <span class="t"><b>무한 통로</b><span>Find exit 8</span></span>
+    </div>
+    <div class="stats">
+      <span>루프 <b id="runs">1</b>회</span>
+      <span>최고 <b id="best">0</b></span>
+      <span>탈출 <b id="clears">0</b>회</span>
+      <button class="ghost" id="soundBtn" type="button" aria-pressed="true">소리 켜짐</button>
+      <button class="ghost" id="guideBtn" type="button">안내문</button>
+    </div>
+  </header>
+
+  <div class="route" aria-label="진행 상황">
+    <span class="track"></span><span class="fill" id="fill"></span>
+    <ol class="line" id="line"></ol>
+  </div>
+
+  <div class="scene">
+    <canvas id="scene" width="960" height="540" aria-label="지하 통로 장면"></canvas>
+    <div class="whiteout" id="whiteout"></div>
+    <div class="blackout" id="blackout"></div>
+    <div class="toast" id="toast" hidden></div>
+    <span class="tag" id="tag">CORRIDOR 0 / 8</span>
+  </div>
+
+  <section class="board" aria-live="polite">
+    <div class="board-head">
+      <span class="chip" id="bType">이상현상 점검</span>
+      <span id="bStage">통로 0</span>
+      <span class="goal">GOAL · 출구 8</span>
+    </div>
+    <div class="board-body" id="boardBody"></div>
+  </section>
+</div>
+
+<!-- 안내문 -->
+<div class="overlay" id="guide">
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="card-head">안내 <span>NOTICE</span></div>
+    <div class="card-body">
+      <h2 id="guideTitle">출구 8까지 걸어서 나가세요</h2>
+      <ul class="rules">
+        <li>통로마다 과제가 하나씩 주어집니다. <b>게시판 문제</b> 또는 <b>이상현상 점검</b>입니다.</li>
+        <li>게시판 문제는 정답을 맞히면 다음 출구로 나아갑니다.</li>
+        <li>이상현상 점검에서는 평소와 다른 점이 보이면 <b>되돌아가고</b>, 없으면 <b>앞으로 가세요</b>.</li>
+        <li>한 번이라도 틀리면 <b>출구 0</b>으로 돌아갑니다.</li>
+        <li>8번 연속으로 맞히면 밖으로 나갈 수 있습니다.</li>
+      </ul>
+      <span class="sect">정상 통로의 모습 · 기억해 두세요</span>
+      <div class="norm" id="normGuide"></div>
+      <button class="primary" id="startBtn" type="button">통로로 들어가기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 실패 -->
+<div class="overlay" id="fail" hidden>
+  <div class="card fail" role="dialog" aria-modal="true" aria-labelledby="failTitle">
+    <div class="card-head">오답 <span>RESET</span></div>
+    <div class="card-body">
+      <p class="big" id="failTitle">출구 0</p>
+      <p id="failLead">처음 통로로 돌아왔습니다.</p>
+      <div class="why"><span class="sect" id="failLabel">정답</span><span id="failWhy"></span></div>
+      <button class="primary" id="retryBtn" type="button">출구 0에서 다시 걷기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 탈출 -->
+<div class="overlay" id="win" hidden>
+  <div class="card win" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <div class="card-head">출구 8 <span>EXIT</span></div>
+    <div class="card-body">
+      <h2 id="winTitle">계단 위로 햇빛이 보입니다. 밖으로 나왔습니다.</h2>
+      <div class="wins">
+        <div><strong id="wRuns">1</strong><span>반복한 루프</span></div>
+        <div><strong id="wTime">0:00</strong><span>걸린 시간</span></div>
+        <div><strong id="wClears">1</strong><span>누적 탈출</span></div>
+      </div>
+      <button class="primary" id="againBtn" type="button">다시 지하로 내려가기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const GOAL = 8;
+
+  /* ---------- 저장 (선택) ---------- */
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('corridor.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('corridor.' + k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  /* ---------- 문제 ---------- */
+  const QUIZ = [
+    { kind: 'input', q: '다음 수열의 빈칸은?', seq: '1, 1, 2, 3, 5, 8, ?', accept: ['13'], why: '앞의 두 수를 더합니다. 5 + 8 = 13' },
+    { kind: 'input', q: '다음 수열의 빈칸은?', seq: '2, 6, 12, 20, 30, ?', accept: ['42'], why: '차이가 4, 6, 8, 10, 12로 늘어납니다. 30 + 12 = 42' },
+    { kind: 'input', q: '다음 수열의 빈칸은?', seq: '3, 5, 9, 17, 33, ?', accept: ['65'], why: '앞의 수 × 2 − 1 입니다. 33 × 2 − 1 = 65' },
+    { kind: 'input', q: '다음 수열의 빈칸은?', seq: '1, 4, 9, 16, 25, ?', accept: ['36'], why: '제곱수입니다. 6 × 6 = 36' },
+    { kind: 'input', q: '시계가 정확히 8시를 가리킵니다. 시침과 분침 사이의 작은 쪽 각도는 몇 도입니까?', accept: ['120'], why: '숫자 한 칸이 30°입니다. 8시는 12에서 4칸 떨어져 있으니 120°' },
+    { kind: 'input', q: '1부터 100까지의 자연수 중 숫자 8이 한 번이라도 들어가는 수는 몇 개입니까?', accept: ['19'], why: '일의 자리가 8인 수 10개, 80~89 10개. 88이 겹치므로 19개' },
+    { kind: 'input', q: '계산하세요.', seq: '7 + 7 ÷ 7 + 7 × 7 − 7', accept: ['50'], why: '곱셈과 나눗셈이 먼저입니다. 7 + 1 + 49 − 7 = 50' },
+    { kind: 'input', q: '1층에서 3층까지 걸어서 30초 걸립니다. 같은 속도로 1층에서 6층까지는 몇 초 걸립니까?', accept: ['75'], why: '1층→3층은 두 개 층이라 한 층에 15초. 1층→6층은 다섯 개 층이라 75초' },
+    { kind: 'input', q: '출구 번호 1부터 8까지를 모두 더하면?', accept: ['36'], why: '1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 = 36' },
+    { kind: 'input', q: '자모를 조합해 한 단어로 쓰세요.', seq: 'ㅊ ㅜ ㄹ ㄱ ㅜ', accept: ['출구'], text: true, why: 'ㅊ + ㅜ + ㄹ = 출, ㄱ + ㅜ = 구. 정답은 “출구”' },
+    { kind: 'input', q: '지금 이 통로 오른쪽 벽에는 광고판이 몇 개 걸려 있습니까?', accept: ['3'], why: '정상 통로의 오른쪽 벽에는 광고판이 3개 있습니다.' },
+    { kind: 'input', q: '지금 이 통로 왼쪽 벽에는 문이 몇 개 있습니까?', accept: ['3'], why: '정상 통로의 왼쪽 벽에는 문이 3개 있습니다.' },
+    { kind: 'choice', q: '오늘이 월요일이라면 100일 뒤는 무슨 요일입니까?', choices: ['화요일', '수요일', '목요일', '금요일'], answer: '수요일', why: '100 = 7 × 14 + 2. 월요일에서 이틀 뒤는 수요일' },
+    { kind: 'choice', q: '사과가 3개 있습니다. 당신이 2개를 가져갔다면, 당신이 가진 사과는 몇 개입니까?', choices: ['0개', '1개', '2개', '3개'], answer: '2개', why: '당신이 가져간 사과는 2개입니다.' },
+    { kind: 'choice', q: '소 10마리 중 9마리만 빼고 모두 달아났습니다. 남은 소는 몇 마리입니까?', choices: ['0마리', '1마리', '9마리', '10마리'], answer: '9마리', why: '“9마리만 빼고” 달아났으니 9마리가 남았습니다.' },
+    { kind: 'choice', q: 'A는 B보다 크고, C는 A보다 큽니다. 가장 작은 것은?', choices: ['A', 'B', 'C', '알 수 없다'], answer: 'B', why: 'C > A > B 입니다.' },
+    { kind: 'choice', q: '달리기 시합에서 2등을 추월했습니다. 지금 몇 등입니까?', choices: ['1등', '2등', '3등', '꼴등'], answer: '2등', why: '2등을 앞질렀으니 그 자리, 2등이 됩니다.' },
+    { kind: 'choice', q: '1년 중 28일이 있는 달은 몇 개입니까?', choices: ['1개', '2개', '7개', '12개'], answer: '12개', why: '모든 달에 28일이 있습니다.' },
+    { kind: 'choice', q: '거울에 비친 벽시계가 3시를 가리킵니다. 실제 시각은?', choices: ['3시', '6시', '9시', '12시'], answer: '9시', why: '좌우가 뒤집히므로 3시 방향은 실제로 9시 방향입니다.' },
+    { kind: 'choice', q: '규칙을 찾아 빈칸을 채우세요.', seq: 'ㄱ, ㄷ, ㅁ, ㅅ, ?', choices: ['ㅇ', 'ㅈ', 'ㅊ', 'ㅋ'], answer: 'ㅈ', why: '자음을 하나씩 건너뜁니다. ㅅ 다음 ㅇ을 건너뛰면 ㅈ' },
+    { kind: 'choice', q: '숫자 8을 가로로 반 자르면 무엇이 됩니까?', choices: ['4', '0 두 개', '3 두 개', '1 두 개'], answer: '0 두 개', why: '위아래로 동그라미가 하나씩 생깁니다.' },
+    { kind: 'choice', q: '세상에서 가장 쉬운 숫자는?', choices: ['0', '1', '100', '190,000'], answer: '190,000', why: '십구만 → “쉽구만”' },
+    { kind: 'choice', q: '세상에서 가장 뜨거운 과일은?', choices: ['망고', '천도복숭아', '용과', '한라봉'], answer: '천도복숭아', why: '천 도(1000°)짜리 복숭아' },
+    { kind: 'choice', q: '왕이 넘어지면 무엇이 될까요?', choices: ['킹콩', '왕창', '폭삭', '킹받음'], answer: '킹콩', why: '킹(King)이 콩 하고 넘어져서 킹콩' },
+    { kind: 'stroop' },
+    { kind: 'stroop' },
+  ];
+
+  const INK = { 빨강: '#c8321f', 파랑: '#2860c9', 초록: '#1a8a4f', 노랑: '#c69300' };
+  function makeStroop() {
+    const names = Object.keys(INK);
+    const word = names[Math.floor(Math.random() * 4)];
+    let ink = word;
+    while (ink === word) ink = names[Math.floor(Math.random() * 4)];
+    return {
+      kind: 'choice', stroop: { word, ink },
+      q: '아래 글자가 칠해진 “색”은 무엇입니까?',
+      choices: names, answer: ink,
+      why: `글자는 “${word}”이지만 칠해진 색은 ${ink}입니다.`,
+    };
+  }
+
+  /* ---------- 이상현상 ---------- */
+  const ANOMALIES = {
+    redLight: '천장 조명 하나가 붉은빛이었습니다.',
+    extraLights: '천장 조명이 8개였습니다. (정상: 6개)',
+    extraDoor: '왼쪽 벽의 문이 4개였습니다. (정상: 3개)',
+    missingPoster: '오른쪽 벽의 광고판이 2개뿐이었습니다. (정상: 3개)',
+    posterEyes: '가장 가까운 광고판 속 사람이 눈을 뜨고 있었습니다.',
+    tallMan: '걸어오는 사람의 키가 천장에 닿을 만큼 컸습니다.',
+    noMan: '늘 걸어오던 사람이 보이지 않았습니다.',
+    flipSign: '천장의 출구 안내판이 거꾸로 매달려 있었습니다.',
+    darkEnd: '통로 안쪽 조명이 모두 꺼져 있었습니다.',
+    handprints: '오른쪽 벽에 붉은 손자국이 찍혀 있었습니다.',
+    noTactile: '바닥의 노란 점자블록이 사라져 있었습니다.',
+    noEmergency: '안쪽 왼쪽 벽의 초록 비상구 표지가 사라져 있었습니다.',
+    puddle: '바닥에 검은 물웅덩이가 고여 있었습니다.',
+  };
+  const ANOMALY_KEYS = Object.keys(ANOMALIES);
+
+  const NORMAL = [
+    ['6', '천장 조명'],
+    ['3', '왼쪽 벽의 문'],
+    ['3', '오른쪽 광고판'],
+    ['1', '걸어오는 사람'],
+    ['1줄', '노란 점자블록'],
+    ['1', '초록 비상구 표지'],
+  ];
+  const normHTML = NORMAL.map(([v, l]) => `<div><strong>${v}</strong><span>${l}</span></div>`).join('');
+  $('#normGuide').innerHTML = normHTML;
+
+  /* ---------- 통로 렌더링 ---------- */
+  const W = 960, H = 540, F = 240, CX = 480, CY = 250, EYE = 1.6, LEN = 14;
+  const cv = $('#scene'), ctx = cv.getContext('2d');
+  const view = { n: 0, anomaly: null, camZ: 0, dim: 0 };
+
+  const P = (X, Y, Z) => { const z = Math.max(Z - view.camZ, 0.05); return [CX + F * X / z, CY - F * (Y - EYE) / z]; };
+  const zn = () => view.camZ + 0.35;
+  const cz = (z) => Math.max(z, zn());
+
+  function poly(pts, fill) {
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+  }
+  function line(a, b, stroke, w = 1) {
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    ctx.strokeStyle = stroke; ctx.lineWidth = w; ctx.stroke();
+  }
+  function wallRect(X, y0, y1, z0, z1, fill) {
+    z0 = cz(z0); z1 = cz(z1); if (z1 <= z0) return;
+    poly([P(X, y0, z0), P(X, y1, z0), P(X, y1, z1), P(X, y0, z1)], fill);
+  }
+  function wallEllipse(X, zc, yc, rz, ry, fill) {
+    if (zc - rz < zn()) return;
+    const pts = [];
+    for (let i = 0; i < 28; i++) { const a = i / 28 * Math.PI * 2; pts.push(P(X, yc + Math.sin(a) * ry, zc + Math.cos(a) * rz)); }
+    poly(pts, fill);
+  }
+  function floorRect(x0, x1, z0, z1, fill) {
+    z0 = cz(z0); z1 = cz(z1); if (z1 <= z0) return;
+    poly([P(x0, 0, z0), P(x1, 0, z0), P(x1, 0, z1), P(x0, 0, z1)], fill);
+  }
+  function floorEllipse(xc, zc, rx, rz, fill) {
+    if (zc - rz < zn()) return;
+    const pts = [];
+    for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; pts.push(P(xc + Math.cos(a) * rx, 0, zc + Math.sin(a) * rz)); }
+    poly(pts, fill);
+  }
+
+  function cfg(a) {
+    return {
+      lights: a === 'extraLights' ? [3.2, 4.6, 6, 7.4, 8.8, 10.2, 11.6, 13] : [3.5, 5.5, 7.5, 9.5, 11.5, 13.3],
+      red: a === 'redLight' ? 2 : -1,
+      doors: a === 'extraDoor' ? [2.8, 5.6, 8.4, 11.2] : [3.5, 7, 10.5],
+      posters: a === 'missingPoster' ? [0, 2] : [0, 1, 2],
+      man: a === 'tallMan' ? 2.9 : a === 'noMan' ? 0 : 1.75,
+      flip: a === 'flipSign', dark: a === 'darkEnd', hands: a === 'handprints',
+      tactile: a !== 'noTactile', emergency: a !== 'noEmergency', puddle: a === 'puddle', eyes: a === 'posterEyes',
+    };
+  }
+
+  function drawPoster(kind, zc, eyes) {
+    const X = 1.999, z0 = zc - 0.65, z1 = zc + 0.65;
+    if (z0 - 0.05 < zn()) return;
+    wallRect(X, 0.94, 2.06, z0 - 0.06, z1 + 0.06, '#3a3f3b');
+    if (kind === 'face') {
+      wallRect(X, 1.0, 2.0, z0, z1, '#d8ccb9');
+      wallRect(X, 1.0, 1.07, z0, z1, '#b24a36');
+      wallEllipse(X, zc, 1.12, 0.4, 0.2, '#5f5249');
+      wallEllipse(X, zc, 1.5, 0.19, 0.24, '#e0c1a0');
+      wallEllipse(X, zc, 1.71, 0.21, 0.1, '#2a2420');
+      if (eyes) {
+        wallEllipse(X, zc - 0.075, 1.54, 0.05, 0.042, '#ffffff');
+        wallEllipse(X, zc + 0.075, 1.54, 0.05, 0.042, '#ffffff');
+        wallEllipse(X, zc - 0.075, 1.54, 0.022, 0.022, '#0b0b0b');
+        wallEllipse(X, zc + 0.075, 1.54, 0.022, 0.022, '#0b0b0b');
+      } else {
+        wallRect(X, 1.535, 1.55, zc - 0.12, zc - 0.035, '#3a2e28');
+        wallRect(X, 1.535, 1.55, zc + 0.035, zc + 0.12, '#3a2e28');
+      }
+      wallRect(X, 1.4, 1.415, zc - 0.05, zc + 0.05, '#9c4d3a');
+    } else if (kind === 'sky') {
+      wallRect(X, 1.0, 2.0, z0, z1, '#4f86cf');
+      wallRect(X, 1.0, 1.32, z0, z1, '#e6d4a4');
+      wallEllipse(X, zc + 0.3, 1.72, 0.13, 0.13, '#f6e27a');
+      wallRect(X, 1.1, 1.17, z0 + 0.12, zc, '#1c2b45');
+      wallRect(X, 1.85, 1.93, z0 + 0.12, zc - 0.1, '#ffffff');
+    } else {
+      wallRect(X, 1.0, 2.0, z0, z1, '#1f7a4d');
+      wallRect(X, 1.72, 1.86, z0 + 0.12, z1 - 0.3, '#f1f3ee');
+      wallRect(X, 1.52, 1.59, z0 + 0.12, z1 - 0.12, '#bfe3cf');
+      wallRect(X, 1.4, 1.47, z0 + 0.12, zc, '#bfe3cf');
+      wallRect(X, 1.08, 1.25, z1 - 0.45, z1 - 0.12, '#f4c20d');
+    }
+  }
+
+  function hand(zc, yc, tilt) {
+    const X = 1.998;
+    wallEllipse(X, zc, yc, 0.085, 0.1, '#8e1c14');
+    const f = [[-0.07, 0.16, 0.022, 0.07], [-0.025, 0.19, 0.022, 0.08], [0.02, 0.185, 0.022, 0.078], [0.06, 0.15, 0.02, 0.06], [0.1, 0.03, 0.02, 0.05]];
+    f.forEach(([dz, dy, rz, ry]) => wallEllipse(X, zc + dz + tilt * dy, yc + dy, rz, ry, '#8e1c14'));
+  }
+
+  function drawMan(h) {
+    if (!h) return;
+    const Z = 8.5, z = Z - view.camZ; if (z < 0.8) return;
+    const s = (F / z) * (h / 1.75);
+    const [fx, fy] = P(0.75, 0, Z);
+    const u = (v) => v * s;
+    ctx.fillStyle = '#1a1b1f';
+    ctx.fillRect(fx - u(0.17), fy - u(0.04), u(0.15), u(0.04));
+    ctx.fillRect(fx + u(0.02), fy - u(0.04), u(0.15), u(0.04));
+    ctx.fillStyle = '#2d3038';
+    ctx.fillRect(fx - u(0.16), fy - u(0.9), u(0.13), u(0.87));
+    ctx.fillRect(fx + u(0.03), fy - u(0.9), u(0.13), u(0.87));
+    ctx.fillStyle = '#f1f1ec';
+    ctx.fillRect(fx - u(0.21), fy - u(1.47), u(0.42), u(0.62));
+    ctx.fillRect(fx - u(0.28), fy - u(1.44), u(0.08), u(0.56));
+    ctx.fillRect(fx + u(0.2), fy - u(1.44), u(0.08), u(0.56));
+    ctx.fillStyle = '#2b3a67';
+    ctx.fillRect(fx - u(0.025), fy - u(1.45), u(0.05), u(0.36));
+    ctx.fillStyle = '#d7b595';
+    ctx.fillRect(fx - u(0.04), fy - u(1.52), u(0.08), u(0.06));
+    ctx.beginPath(); ctx.ellipse(fx, fy - u(1.62), u(0.1), u(0.12), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1b1a19';
+    ctx.beginPath(); ctx.ellipse(fx, fy - u(1.68), u(0.105), u(0.07), 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#3b2c22';
+    ctx.fillRect(fx + u(0.2), fy - u(0.92), u(0.26), u(0.19));
+  }
+
+  function drawSign(n, flip) {
+    const Z = 1.6; if (Z - view.camZ < 0.6) return;
+    const [x0, y0] = P(-1.05, 2.86, Z), [x1, y1] = P(1.05, 2.36, Z);
+    const w = x1 - x0, h = y1 - y0;
+    line(P(-0.8, 3, Z), P(-0.8, 2.86, Z), '#4e534f', 2);
+    line(P(0.8, 3, Z), P(0.8, 2.86, Z), '#4e534f', 2);
+    ctx.save();
+    if (flip) { const cx = x0 + w / 2, cy = y0 + h / 2; ctx.translate(cx, cy); ctx.rotate(Math.PI); ctx.translate(-cx, -cy); }
+    ctx.fillStyle = '#f4c20d'; ctx.fillRect(x0, y0, w, h);
+    ctx.fillStyle = '#141614';
+    const pad = h * 0.13, bs = h - pad * 2;
+    ctx.fillRect(x0 + pad, y0 + pad, bs, bs);
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#f4c20d';
+    ctx.font = `900 ${h * 0.62}px "Gothic A1", sans-serif`;
+    ctx.fillText(String(n), x0 + pad + bs / 2, y0 + h / 2 + h * 0.03);
+    ctx.fillStyle = '#141614'; ctx.textAlign = 'left';
+    ctx.font = `900 ${h * 0.46}px "Gothic A1", sans-serif`;
+    ctx.fillText('출구', x0 + pad * 2 + bs, y0 + h / 2 + h * 0.02);
+    ctx.font = `600 ${h * 0.2}px "IBM Plex Mono", monospace`;
+    ctx.fillText('EXIT', x0 + pad * 2 + bs + h * 1.15, y0 + h / 2 + h * 0.04);
+    // 위쪽(앞) 화살표
+    const ax = x1 - h * 0.62, ay = y0 + h * 0.5, a = h * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay - a); ctx.lineTo(ax + a * 0.9, ay); ctx.lineTo(ax + a * 0.32, ay); ctx.lineTo(ax + a * 0.32, ay + a);
+    ctx.lineTo(ax - a * 0.32, ay + a); ctx.lineTo(ax - a * 0.32, ay); ctx.lineTo(ax - a * 0.9, ay); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function draw() {
+    const c = cfg(view.anomaly), L = LEN, z0 = zn();
+    ctx.fillStyle = '#0b0c0b'; ctx.fillRect(0, 0, W, H);
+
+    // 막다른 벽과 꺾이는 통로
+    const ea = P(-2, 3, L), eb = P(2, 0, L);
+    ctx.fillStyle = '#cfd3cc'; ctx.fillRect(ea[0], ea[1], eb[0] - ea[0], eb[1] - ea[1]);
+    const oa = P(0.1, 2.5, L), ob = P(2, 0, L);
+    const og = ctx.createLinearGradient(oa[0], 0, ob[0], 0);
+    og.addColorStop(0, '#9aa09a'); og.addColorStop(1, '#c3c8c1');
+    ctx.fillStyle = og; ctx.fillRect(oa[0], oa[1], ob[0] - oa[0], ob[1] - oa[1]);
+
+    // 천장, 바닥, 벽
+    let g = ctx.createLinearGradient(0, 0, 0, CY);
+    g.addColorStop(0, '#bcc1bb'); g.addColorStop(1, '#dde1dc');
+    poly([P(-2, 3, z0), P(2, 3, z0), P(2, 3, L), P(-2, 3, L)], g);
+    g = ctx.createLinearGradient(0, H, 0, CY);
+    g.addColorStop(0, '#7c827c'); g.addColorStop(1, '#a9aea7');
+    poly([P(-2, 0, z0), P(2, 0, z0), P(2, 0, L), P(-2, 0, L)], g);
+    g = ctx.createLinearGradient(0, 0, CX, 0);
+    g.addColorStop(0, '#d3d7d1'); g.addColorStop(1, '#eceee9');
+    poly([P(-2, 0, z0), P(-2, 3, z0), P(-2, 3, L), P(-2, 0, L)], g);
+    g = ctx.createLinearGradient(W, 0, CX, 0);
+    g.addColorStop(0, '#d3d7d1'); g.addColorStop(1, '#eceee9');
+    poly([P(2, 0, z0), P(2, 3, z0), P(2, 3, L), P(2, 0, L)], g);
+
+    // 타일 줄눈
+    for (const X of [-2, 2]) {
+      for (let y = 0.25; y < 3; y += 0.25) line(P(X, y, z0), P(X, y, L), 'rgba(40,50,44,.10)');
+      for (let z = Math.ceil(z0 / 0.3) * 0.3; z < L; z += 0.3) line(P(X, 0.14, z), P(X, 3, z), 'rgba(40,50,44,.08)');
+      wallRect(X, 0, 0.14, 0, L, '#6c726d');
+    }
+    for (let x = -1.5; x <= 1.5; x += 0.5) line(P(x, 0, z0), P(x, 0, L), 'rgba(30,34,31,.13)');
+    for (let z = Math.ceil(z0); z < L; z += 1) line(P(-2, 0, z), P(2, 0, z), 'rgba(30,34,31,.13)');
+    for (let z = Math.ceil(z0); z < L; z += 2) line(P(-2, 3, z), P(2, 3, z), 'rgba(30,34,31,.08)');
+
+    if (c.tactile) {
+      floorRect(1.05, 1.35, 0, L, '#e0b30e');
+      for (let z = Math.ceil(z0 / 0.3) * 0.3; z < L; z += 0.3) line(P(1.05, 0, z), P(1.35, 0, z), 'rgba(120,90,0,.35)');
+    }
+    if (c.puddle) {
+      floorEllipse(-0.2, 5.6, 1.0, 0.9, '#15181c');
+      floorEllipse(-0.35, 5.4, 0.45, 0.25, 'rgba(210,220,230,.18)');
+    }
+
+    // 왼쪽 벽: 문
+    c.doors.forEach((z) => {
+      wallRect(-1.999, 0, 2.18, z - 0.56, z + 0.56, '#555d58');
+      wallRect(-1.998, 0.03, 2.1, z - 0.49, z + 0.49, '#858d87');
+      wallRect(-1.997, 1.9, 2.02, z - 0.3, z + 0.3, '#e9ece7');
+      wallRect(-1.997, 0.98, 1.08, z + 0.3, z + 0.4, '#2a2e2b');
+    });
+    if (c.emergency) {
+      wallRect(-1.999, 2.3, 2.62, 12.2, 12.95, '#1e9e5a');
+      wallRect(-1.998, 2.37, 2.55, 12.3, 12.55, '#e9f7ee');
+      wallRect(-1.998, 2.41, 2.51, 12.62, 12.85, '#e9f7ee');
+    }
+
+    // 오른쪽 벽: 광고판
+    const posters = [{ z: 3, k: 'face' }, { z: 6.5, k: 'sky' }, { z: 10, k: 'green' }];
+    c.posters.forEach((i) => drawPoster(posters[i].k, posters[i].z, c.eyes));
+    if (c.hands) {
+      hand(4.4, 1.2, 0.2); hand(4.9, 0.85, -0.1); hand(5.2, 1.55, 0.15);
+      hand(5.6, 1.1, 0); hand(7.9, 1.4, -0.15); hand(8.3, 0.95, 0.1);
+    }
+
+    drawMan(c.man);
+
+    if (c.dark) {
+      const d = 'rgba(4,5,4,.88)';
+      poly([P(-2, 3, 8.8), P(2, 3, 8.8), P(2, 3, L), P(-2, 3, L)], d);
+      poly([P(-2, 0, 8.8), P(2, 0, 8.8), P(2, 0, L), P(-2, 0, L)], d);
+      poly([P(-2, 0, 8.8), P(-2, 3, 8.8), P(-2, 3, L), P(-2, 0, L)], d);
+      poly([P(2, 0, 8.8), P(2, 3, 8.8), P(2, 3, L), P(2, 0, L)], d);
+      ctx.fillStyle = d; ctx.fillRect(ea[0], ea[1], eb[0] - ea[0], eb[1] - ea[1]);
+    }
+
+    // 천장 조명
+    c.lights.forEach((z, i) => {
+      if (z - 0.45 < z0) return;
+      const off = c.dark && z > 8.8;
+      const red = i === c.red;
+      poly([P(-0.36, 3, z - 0.45), P(0.36, 3, z - 0.45), P(0.36, 3, z + 0.45), P(-0.36, 3, z + 0.45)], off ? '#3a3e3b' : red ? '#ff4a36' : '#fbfdf7');
+      if (off) return;
+      const [gx, gy] = P(0, 2.96, z);
+      const r = F * 1.3 / (z - view.camZ);
+      const rg = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+      rg.addColorStop(0, red ? 'rgba(255,60,40,.55)' : 'rgba(255,255,248,.5)');
+      rg.addColorStop(1, 'rgba(255,255,248,0)');
+      ctx.fillStyle = rg; ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
+    });
+
+    drawSign(view.n, c.flip);
+
+    // 비네트
+    const vg = ctx.createRadialGradient(CX, CY, 120, CX, CY, 620);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.42)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    if (view.dim > 0) { ctx.fillStyle = `rgba(0,0,0,${view.dim})`; ctx.fillRect(0, 0, W, H); }
+  }
+
+  function fit() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+
+  /* ---------- 소리 ---------- */
+  let ac = null;
+  function tone(freq, dur, type = 'sine', vol = 0.14, when = 0) {
+    if (!S.sound) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      const t = ac.currentTime + when;
+      const o = ac.createOscillator(), gn = ac.createGain();
+      o.type = type; o.frequency.value = freq;
+      gn.gain.setValueAtTime(0.0001, t);
+      gn.gain.linearRampToValueAtTime(vol, t + 0.02);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(gn).connect(ac.destination);
+      o.start(t); o.stop(t + dur + 0.05);
+    } catch (e) {}
+  }
+  const sfx = {
+    ok() { tone(659, 0.45); tone(523, 0.7, 'sine', 0.14, 0.26); },
+    bad() { tone(98, 0.8, 'sawtooth', 0.07); tone(104, 0.8, 'sawtooth', 0.07); },
+    win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.6, 'triangle', 0.12, i * 0.14)); },
+  };
+
+  /* ---------- 게임 상태 ---------- */
+  const S = {
+    level: 0, runs: 1, best: store.get('best', 0), clears: store.get('clears', 0),
+    sound: store.get('sound', true), round: null, busy: false, t0: 0,
+    usedQuiz: [], lastAnomaly: null, lastType: null,
+  };
+
+  function pickRound() {
+    // 같은 종류가 세 번 이어지지 않도록 살짝 보정
+    let type = Math.random() < 0.5 ? 'anomaly' : 'quiz';
+    if (S.lastType && S.lastType.t === type && S.lastType.c >= 2) type = type === 'anomaly' ? 'quiz' : 'anomaly';
+    S.lastType = S.lastType && S.lastType.t === type ? { t: type, c: S.lastType.c + 1 } : { t: type, c: 1 };
+
+    if (type === 'anomaly') {
+      let anomaly = null;
+      if (Math.random() < 0.55) {
+        const pool = ANOMALY_KEYS.filter((k) => k !== S.lastAnomaly);
+        anomaly = pool[Math.floor(Math.random() * pool.length)];
+        S.lastAnomaly = anomaly;
+      }
+      return { type, anomaly };
+    }
+    if (S.usedQuiz.length >= QUIZ.length) S.usedQuiz = [];
+    const free = QUIZ.map((_, i) => i).filter((i) => !S.usedQuiz.includes(i));
+    const idx = free[Math.floor(Math.random() * free.length)];
+    S.usedQuiz.push(idx);
+    let q = QUIZ[idx];
+    if (q.kind === 'stroop') q = makeStroop();
+    else if (q.kind === 'choice') q = { ...q, choices: shuffle(q.choices.slice()) };
+    return { type, anomaly: null, q };
+  }
+
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const norm = (s) => String(s).normalize('NFC').replace(/[\s,.°"'“”]/g, '').replace(/(초|개|도|마리|번|시|등)$/g, '');
+
+  function renderRoute() {
+    $('#line').innerHTML = Array.from({ length: GOAL + 1 }, (_, i) => {
+      const cls = [i < S.level ? 'passed' : '', i === S.level ? 'current' : '', i === GOAL ? 'goal' : ''].join(' ').trim();
+      return `<li class="${cls}"><span class="dot"></span><span class="lbl">${i === GOAL ? '출구 8' : i}</span></li>`;
+    }).join('');
+    $('#fill').style.width = `calc((100% - 100% / 9) * ${S.level / GOAL})`;
+    $('#runs').textContent = S.runs;
+    $('#best').textContent = S.best;
+    $('#clears').textContent = S.clears;
+    $('#tag').textContent = `CORRIDOR ${S.level} / ${GOAL}`;
+  }
+
+  function renderBoard() {
+    const r = S.round, body = $('#boardBody');
+    $('#bStage').textContent = `통로 ${S.level} → 출구 ${S.level + 1}`;
+    if (r.type === 'anomaly') {
+      $('#bType').textContent = '이상현상 점검';
+      body.innerHTML = `
+        <p class="q">통로를 잘 살펴보세요. 평소와 다른 점이 있습니까?</p>
+        <div class="dir">
+          <button type="button" class="back" data-a="back"><kbd>←</kbd><b>되돌아가기</b><small>이상현상이 있다</small></button>
+          <button type="button" class="fwd" data-a="fwd"><kbd>→</kbd><b>앞으로 가기</b><small>이상 없음</small></button>
+        </div>
+        <details class="ref"><summary>정상 통로 기준 다시 보기</summary><div class="norm">${normHTML}</div></details>`;
+      body.querySelectorAll('.dir button').forEach((b) => b.addEventListener('click', () => answerAnomaly(b.dataset.a)));
+      focusFirst(body.querySelector('.dir button'));
+      return;
+    }
+    const q = r.q;
+    $('#bType').textContent = '게시판 문제';
+    let head = `<p class="q">${esc(q.q)}`;
+    if (q.seq) head += `<span class="seq">${esc(q.seq)}</span>`;
+    if (q.stroop) head += `<span class="stroop" style="color:${INK[q.stroop.ink]}">${q.stroop.word}</span>`;
+    head += '</p>';
+    if (q.kind === 'choice') {
+      body.innerHTML = head + `<div class="choices">${q.choices.map((c, i) => `<button type="button" class="opt" data-v="${esc(c)}"><kbd>${i + 1}</kbd><span>${esc(c)}</span></button>`).join('')}</div>`;
+      body.querySelectorAll('.opt').forEach((b) => b.addEventListener('click', () => answerQuiz(b.dataset.v)));
+      focusFirst(body.querySelector('.opt'));
+    } else {
+      body.innerHTML = head + `
+        <form class="ansform" id="ansForm" autocomplete="off">
+          <input id="ans" name="ans" ${q.text ? '' : 'inputmode="numeric"'} placeholder="${q.text ? '답을 입력하세요' : '숫자를 입력하세요'}" aria-label="답 입력">
+          <button class="go" type="submit">확인</button>
+        </form>
+        <p class="hint">Enter 키로 제출할 수 있습니다.</p>`;
+      $('#ansForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const inp = $('#ans');
+        if (!inp.value.trim()) { inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake'); inp.focus(); return; }
+        answerQuiz(inp.value);
+      });
+      focusFirst($('#ans'));
+    }
+  }
+
+  function focusFirst(el) {
+    if (el && matchMedia('(pointer: fine)').matches && !overlayOpen()) el.focus({ preventScroll: true });
+  }
+
+  function newRound() {
+    S.round = pickRound();
+    view.n = S.level; view.anomaly = S.round.anomaly; view.camZ = 0; view.dim = 0;
+    draw(); renderRoute(); renderBoard();
+  }
+
+  /* ---------- 판정 ---------- */
+  function answerAnomaly(a) {
+    if (S.busy) return;
+    const has = !!S.round.anomaly;
+    const ok = (a === 'back') === has;
+    const note = has ? ANOMALIES[S.round.anomaly] : '이 통로에는 이상현상이 없었습니다.';
+    if (ok) pass(has ? `이상현상 · ${note}` : '이상 없음 · 그대로 나아갑니다.', a === 'back');
+    else fail(has ? '이상현상이 있었습니다' : '이상현상은 없었습니다', note);
+  }
+
+  function answerQuiz(v) {
+    if (S.busy) return;
+    const q = S.round.q;
+    const ok = q.kind === 'choice' ? v === q.answer : q.accept.some((x) => norm(x) === norm(v));
+    const ans = q.kind === 'choice' ? q.answer : q.accept[0];
+    if (ok) pass(`정답 · ${q.why}`);
+    else fail(`정답: ${ans}`, q.why);
+  }
+
+  const ease = (p) => p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  function animate(dur, step) {
+    return new Promise((res) => {
+      if (reduced) { step(1); return res(); }
+      const t0 = performance.now();
+      const f = (t) => { const p = Math.min(1, (t - t0) / dur); step(p); p < 1 ? requestAnimationFrame(f) : res(); };
+      requestAnimationFrame(f);
+    });
+  }
+  const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? Math.min(ms, 600) : ms));
+
+  function showToast(html) { const t = $('#toast'); t.innerHTML = html; t.hidden = false; }
+  function hideToast() { $('#toast').hidden = true; }
+
+  async function pass(msg, turnedBack) {
+    S.busy = true;
+    sfx.ok();
+    const [label, ...rest] = msg.split(' · ');
+    showToast(`<b>${esc(label)}</b>${esc(rest.join(' · '))}`);
+    await wait(1100);
+    const wo = $('#whiteout');
+    if (turnedBack) {
+      // 되돌아가기: 뒤로 돌아서 걷는 느낌으로 암전
+      const bo = $('#blackout');
+      await animate(450, (p) => { bo.style.opacity = p; });
+      S.level++; S.best = Math.max(S.best, S.level); store.set('best', S.best);
+      hideToast();
+      if (S.level >= GOAL) return win();
+      newRound();
+      await animate(450, (p) => { bo.style.opacity = 1 - p; });
+    } else {
+      await animate(750, (p) => { view.camZ = ease(p) * 4.2; wo.style.opacity = Math.max(0, (p - 0.35) / 0.65); draw(); });
+      S.level++; S.best = Math.max(S.best, S.level); store.set('best', S.best);
+      hideToast();
+      if (S.level >= GOAL) return win();
+      newRound();
+      await animate(420, (p) => { wo.style.opacity = 1 - p; });
+    }
+    S.busy = false;
+  }
+
+  async function fail(label, why) {
+    S.busy = true;
+    sfx.bad();
+    const seq = [0.75, 0.1, 0.85, 0.3, 0.92, 0.2, 1];
+    for (const d of seq) { view.dim = d; draw(); await wait(reduced ? 0 : 90); }
+    const reached = S.level;
+    S.level = 0; S.runs++;
+    $('#failLead').textContent = reached ? `통로 ${reached}에서 틀렸습니다. 처음 통로로 돌아갑니다.` : '처음 통로에서 틀렸습니다. 다시 시작합니다.';
+    $('#failLabel').textContent = label;
+    $('#failWhy').textContent = why;
+    openOverlay('#fail');
+  }
+
+  function win() {
+    S.clears++; store.set('clears', S.clears);
+    view.n = GOAL; view.anomaly = null; view.camZ = 0; view.dim = 0; draw();
+    renderRoute();
+    sfx.win();
+    const sec = Math.round((Date.now() - S.t0) / 1000);
+    $('#wRuns').textContent = S.runs;
+    $('#wTime').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    $('#wClears').textContent = S.clears;
+    $('#whiteout').style.opacity = 0; $('#blackout').style.opacity = 0;
+    openOverlay('#win');
+  }
+
+  /* ---------- 오버레이 ---------- */
+  const overlayOpen = () => ['#guide', '#fail', '#win'].some((s) => !$(s).hidden);
+  function openOverlay(sel) { $(sel).hidden = false; const b = $(sel).querySelector('.primary'); b && b.focus({ preventScroll: true }); }
+  function closeOverlay(sel) { $(sel).hidden = true; }
+
+  $('#startBtn').addEventListener('click', () => {
+    closeOverlay('#guide');
+    if (!S.t0) S.t0 = Date.now();
+    if (!S.round) newRound(); else focusFirst($('#boardBody button, #boardBody input'));
+  });
+  $('#guideBtn').addEventListener('click', () => { $('#startBtn').textContent = S.round ? '계속 걷기' : '통로로 들어가기'; openOverlay('#guide'); });
+  $('#retryBtn').addEventListener('click', async () => {
+    closeOverlay('#fail');
+    newRound();
+    view.dim = 1; draw();
+    await animate(500, (p) => { view.dim = 1 - p; draw(); });
+    view.dim = 0; draw();
+    S.busy = false;
+  });
+  $('#againBtn').addEventListener('click', () => {
+    closeOverlay('#win');
+    S.level = 0; S.runs = 1; S.t0 = Date.now(); S.busy = false;
+    newRound();
+  });
+  function syncSound() {
+    const b = $('#soundBtn');
+    b.textContent = S.sound ? '소리 켜짐' : '소리 꺼짐';
+    b.setAttribute('aria-pressed', String(S.sound));
+  }
+  $('#soundBtn').addEventListener('click', () => { S.sound = !S.sound; store.set('sound', S.sound); syncSound(); });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input')) return;
+    if (overlayOpen()) return;
+    if (!S.round || S.busy) return;
+    if (S.round.type === 'anomaly') {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); answerAnomaly('back'); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); answerAnomaly('fwd'); }
+    } else if (S.round.q.kind === 'choice' && /^[1-4]$/.test(e.key)) {
+      const b = document.querySelectorAll('.opt')[+e.key - 1];
+      if (b) answerQuiz(b.dataset.v);
+    }
+  });
+
+  /* ---------- 시작 ---------- */
+  syncSound();
+  // 안내문 뒤로 정상 통로를 먼저 보여 준다
+  view.n = 0; view.anomaly = null;
+  renderRoute();
+  $('#bStage').textContent = '통로 0 → 출구 1';
+  $('#boardBody').innerHTML = '<p class="q">안내문을 읽고 통로로 들어가세요.</p>';
+  fit();
+  window.addEventListener('resize', fit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+})();
+</script>
