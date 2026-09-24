@@ -86,6 +86,14 @@ const EFFECTS = {
 };
 const EFFECT_KEYS = Object.keys(EFFECTS);
 
+// 난이도: 몇 번째 토막부터 단단한 나무(2번/3번 쳐야 쓰러짐)가 섞이는지
+const MODES = {
+  easy: { name: "보통",   desc: "한 번에 쓰러지는 나무만 나와요", color: "#4cd964", from2: Infinity, from3: Infinity, p2: 0, p3: 0 },
+  hard: { name: "어려움", desc: "중반부터 2번·3번 쳐야 하는 나무", color: "#ff9f1c", from2: 25, from3: 70, p2: 0.22, p3: 0.14 },
+  hell: { name: "지옥",   desc: "처음부터 단단한 나무가 가득!",   color: "#ff4d4d", from2: 6, from3: 20, p2: 0.3, p3: 0.25 },
+};
+const MODE_KEYS = Object.keys(MODES);
+
 // ───────── 유틸 ─────────
 function mulberry32(seed) {
   return function () {
@@ -148,6 +156,7 @@ const sfx = {
   combo()    { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.08, { vol: 0.05, delay: i * 0.05 })); },
   good()     { [659, 784, 988, 1318].forEach((f, i) => tone(f, 0.1, { vol: 0.06, delay: i * 0.07 })); },
   bad()      { [392, 330, 262].forEach((f, i) => tone(f, 0.12, { type: "sawtooth", vol: 0.04, delay: i * 0.08 })); },
+  clang()    { tone(1320, 0.07, { vol: 0.05, to: 900 }); tone(180, 0.06, { type: "triangle", vol: 0.1 }); },
   shield()   { tone(1200, 0.2, { to: 300, vol: 0.06 }); tone(600, 0.15, { type: "triangle", vol: 0.1 }); },
   join()     { tone(660, 0.06, { vol: 0.05 }); tone(990, 0.08, { vol: 0.05, delay: 0.06 }); },
   leave()    { tone(500, 0.08, { vol: 0.04, to: 300 }); },
@@ -185,7 +194,9 @@ function bgmStop() { clearInterval(BGM.timer); BGM.timer = null; }
 let state = "lobby";   // lobby | countdown | play | result
 let stateT = 0;
 let seed = 1;
-let best = parseInt(store("timber4.best") || "0", 10) || 0;
+let mode = MODES[store("timber4.mode")] ? store("timber4.mode") : "hard";
+const bestKey = () => "timber4.best." + mode;
+let best = parseInt(store(bestKey()) || "0", 10) || 0;
 let lastCount = -1;
 let resultRanks = [];
 const floaters = [];
@@ -206,18 +217,27 @@ const players = PLAYERS.map((def, i) => ({
 }));
 
 function nextSeg(p) {
+  const n = p.gen++;
   const prev = p.segs.length ? p.segs[p.segs.length - 1].b : 0;
   const v = Math.floor(p.rng() * 4);
-  if (p.segs.length < 3) return { b: 0, v };
+  const m = MODES[mode];
+  const h = p.rng();
+  let hp = 1;
+  if (n >= 3 && n >= m.from3 && h < m.p3) hp = 3;
+  else if (n >= 3 && n >= m.from2 && h < m.p3 + m.p2) hp = 2;
+  const seg = (b) => ({ b, v, hp, max: hp, hit: 0 });
+  if (n < 3) return seg(0);
   // 가지 바로 위에 반대쪽 가지가 오면 피할 수 없으므로, 가지 다음은 빈칸이거나 같은 쪽만
-  if (prev !== 0) return { b: p.rng() < 0.6 ? 0 : prev, v };
+  if (prev !== 0) return seg(p.rng() < 0.6 ? 0 : prev);
   const r = p.rng();
-  return { b: r < 0.38 ? -1 : r < 0.76 ? 1 : 0, v };
+  return seg(r < 0.38 ? -1 : r < 0.76 ? 1 : 0);
 }
 
 function resetPlayer(p) {
   p.rng = mulberry32(seed);   // 같은 시드 → 모두 똑같은 나무로 공정하게 대결
   p.segs = [];
+  p.gen = 0;
+  p.hardSeen = false;
   for (let k = 0; k < NSEG + 1; k++) p.segs.push(nextSeg(p));
   p.side = -1; p.alive = true; p.deadT = 0; p.cause = "";
   p.score = 0; p.chops = 0; p.timer = 0.6;
@@ -275,6 +295,17 @@ function chop(p, dir) {
   // 가지 쪽으로 걸어 들어가면 탈락
   if (p.segs[0].b === dir && !useShield(p)) return die(p, "branch");
 
+  // 단단한 나무: 쇠띠가 남아 있으면 한 번 칠 때마다 하나씩 벗겨짐
+  const base = p.segs[0];
+  if (base.hp > 1) {
+    base.hp--;
+    base.hit = 0.12;
+    chips(p, p.cx - dir * 12, GROUND - 14, 7, [PAL.metalLight, PAL.metal, "#ffcd3c"], 1.2);
+    sfx.clang();
+    addCombo(p, TIME_ADD * 0.5);
+    return;
+  }
+
   const cut = p.segs.shift();
   p.segs.push(nextSeg(p));
   p.drop = SEG;
@@ -288,14 +319,18 @@ function chop(p, dir) {
   // 새로 내려온 토막의 가지에 깔리면 탈락
   if (p.segs[0].b === dir && !useShield(p)) return die(p, "squash");
 
+  p.chops++;
+  p.score += p.fx.fever > 0 ? 2 : 1;
+  addCombo(p, TIME_ADD);
+}
+
+// 도끼질 1번마다 콤보·시간 처리 (단단한 나무를 치는 것도 콤보로 인정)
+function addCombo(p, time) {
   const now = performance.now() / 1000;
   if (now - p.lastChop > COMBO_GAP) p.combo = 0;
   p.combo++;
   p.lastChop = now;
-  p.chops++;
-  p.score += p.fx.fever > 0 ? 2 : 1;
-  p.timer = Math.min(1, p.timer + TIME_ADD);
-
+  p.timer = Math.min(1, p.timer + time);
   if (p.combo % COMBO_GOAL === 0) startRoulette(p);
 }
 
@@ -388,8 +423,15 @@ function update(dt) {
     for (const q of p.parts) { q.vy += 500 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }
     p.parts = p.parts.filter((q) => q.life > 0);
 
+    for (const sg of p.segs) if (sg.hit > 0) sg.hit = Math.max(0, sg.hit - dt);
+
     if (state !== "play" || !p.joined) continue;
     if (!p.alive) { p.deadT += dt; continue; }
+
+    if (!p.hardSeen && !p.roul && !p.banner && p.segs.slice(0, 6).some((sg) => sg.hp > 1)) {
+      p.hardSeen = true;
+      p.banner = { title: "HARD!", sub: "쇠띠 수만큼 더 쳐요", color: "#c0cbdc", t: 1.8 };
+    }
 
     for (const k in p.fx) p.fx[k] = Math.max(0, p.fx[k] - dt);
     if (now - p.lastChop > COMBO_GAP) p.combo = 0;
@@ -432,7 +474,7 @@ function finishGame() {
   const js = joinedPlayers().slice().sort((a, b) => b.score - a.score);
   resultRanks = js.map((p) => ({ p, rank: 1 + js.filter((q) => q.score > p.score).length }));
   const top = js[0] ? js[0].score : 0;
-  if (top > best) { best = top; store("timber4.best", String(best)); }
+  if (top > best) { best = top; store(bestKey(), String(best)); }
   setState("result");
   sfx.win();
 }
@@ -521,16 +563,32 @@ function drawGrave(x, y) {
 }
 
 function drawSegment(cx, top, seg) {
-  const x = cx - TRUNK / 2;
-  rect(x, top, TRUNK, SEG, PAL.bark);
-  rect(x, top, 3, SEG, PAL.barkLight);
-  rect(x + TRUNK - 4, top, 4, SEG, PAL.barkDark);
+  const hard = seg.max > 1;
+  const x = cx - TRUNK / 2 + (seg.hit > 0 ? (seg.hit * 100 % 2 < 1 ? -2 : 2) : 0);
+  rect(x, top, TRUNK, SEG, hard ? "#6e4230" : PAL.bark);
+  rect(x, top, 3, SEG, hard ? PAL.bark : PAL.barkLight);
+  rect(x + TRUNK - 4, top, 4, SEG, hard ? "#4a2a26" : PAL.barkDark);
   // 나무껍질 무늬 (토막마다 조금씩 다르게)
   const o = seg.v * 3;
   rect(x + 7 + (o % 6), top + 3, 2, 8, PAL.barkDark);
   rect(x + 14 - (o % 4), top + 12, 2, 9, PAL.barkDark);
   rect(x + 19, top + 4 + (o % 7), 1, 5, PAL.barkDark);
   rect(x, top + SEG - 1, TRUNK, 1, PAL.barkDark);
+  if (hard) {
+    // 남은 쇠띠 = 더 쳐야 하는 횟수
+    const bands = seg.hp - 1;
+    for (let k = 0; k < bands; k++) {
+      const by = k === 0 ? top + 2 : top + SEG - 6;
+      rect(x - 1, by, TRUNK + 2, 4, PAL.slate);
+      rect(x - 1, by, TRUNK + 2, 1, PAL.metal);
+      rect(x + 3, by + 1, 2, 2, PAL.metalLight);
+      rect(x + TRUNK - 5, by + 1, 2, 2, PAL.metalLight);
+    }
+    if (seg.hp < seg.max) { // 금 간 자국
+      rect(x + 9, top + 8, 2, 3, PAL.ink); rect(x + 11, top + 11, 2, 3, PAL.ink); rect(x + 13, top + 14, 2, 2, PAL.ink);
+    }
+    if (seg.hp > 1) text(String(seg.hp), x + TRUNK / 2, top + 6, { align: "center", color: PAL.white, outline: true });
+  }
   if (seg.b) {
     const bx = seg.b < 0 ? x - BR : x + TRUNK;
     rect(bx, top + 6, BR, 7, PAL.bark);
@@ -815,6 +873,11 @@ function drawLobby(t) {
   panel(b.x, b.y, b.w, b.h, n ? PAL.white : PAL.slate, n ? (blink ? "#ff5c7a" : "#a8284a") : "#20243a");
   text(n ? `START (${n}명)` : "참가자 없음", b.x + b.w / 2, b.y + 8, { align: "center", color: n ? PAL.white : PAL.slate, shadow: n ? PAL.ink : null });
 
+  const md = MODES[mode], mb = BTN.mode;
+  panel(mb.x, mb.y, mb.w, mb.h, md.color);
+  text(`난이도: ${md.name}`, mb.x + mb.w / 2, mb.y + 3, { align: "center", color: md.color, shadow: null });
+  text(md.desc, 240, 227, { align: "center", color: PAL.white, outline: true });
+
   const s = BTN.sound, f = BTN.full;
   panel(s.x, s.y, s.w, s.h, PAL.grey);
   text(soundOn ? "소리 ON" : "소리 OFF", s.x + s.w / 2, s.y + 3, { align: "center", color: soundOn ? PAL.white : PAL.slate, shadow: null });
@@ -838,7 +901,7 @@ function drawResult(t) {
     : winners.length > 1 ? "무승부!" : `${winners[0].p.def.name} 승리!`;
   const tc = resultRanks.length > 1 && winners.length === 1 ? winners[0].p.def.c : "#ffcd3c";
   text(title, 240, y0 + 8, { size: 24, align: "center", color: tc, outline: true });
-  text(`BEST ${best}`, 240, y0 + 36, { align: "center", color: PAL.grey });
+  text(`${MODES[mode].name} · BEST ${best}`, 240, y0 + 36, { align: "center", color: PAL.grey });
 
   resultRanks.forEach((r, k) => {
     const y = y0 + 56 + k * 26;
@@ -861,8 +924,9 @@ function drawResult(t) {
 
 const BTN = {
   start: { x: 176, y: 160, w: 128, h: 28 },
-  sound: { x: 180, y: 244, w: 58, h: 18 },
-  full:  { x: 242, y: 244, w: 58, h: 18 },
+  mode:  { x: 134, y: 244, w: 86, h: 18 },
+  sound: { x: 224, y: 244, w: 58, h: 18 },
+  full:  { x: 286, y: 244, w: 58, h: 18 },
   retry: { x: 126, y: 0, w: 110, h: 26 },
   menu:  { x: 244, y: 0, w: 110, h: 26 },
 };
@@ -896,6 +960,14 @@ function toggleFullscreen() {
   else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
 }
 
+function cycleMode() {
+  mode = MODE_KEYS[(MODE_KEYS.indexOf(mode) + 1) % MODE_KEYS.length];
+  store("timber4.mode", mode);
+  best = parseInt(store(bestKey()) || "0", 10) || 0;
+  players.forEach(resetPlayer);
+  sfx.join();
+}
+
 function toggleSound() {
   soundOn = !soundOn;
   store("timber4.sound", soundOn ? "on" : "off");
@@ -913,6 +985,7 @@ cv.addEventListener("pointerdown", (e) => {
 
   if (state === "lobby") {
     if (hit(BTN.start, x, y)) return startGame();
+    if (hit(BTN.mode, x, y)) return cycleMode();
     if (hit(BTN.sound, x, y)) return toggleSound();
     if (hit(BTN.full, x, y)) return toggleFullscreen();
     return toggleJoin(p);
@@ -940,6 +1013,7 @@ window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   if (state === "lobby") {
     if (e.code === "Space" || e.code === "Enter") return startGame();
+    if (e.code === "KeyD") return cycleMode();
     if (m) toggleJoin(players[m[0]]);
     return;
   }
