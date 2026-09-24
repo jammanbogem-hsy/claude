@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>팀버 x4</title>
+<style>
+  @font-face {
+    font-family: "Galmuri";
+    src: url("fonts/Galmuri11-Bold.woff2") format("woff2");
+    font-display: block;
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0d0e17;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body { display: grid; place-items: center; }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    touch-action: none;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="270" aria-label="팀버 x4 게임 화면"></canvas>
+<script>
+"use strict";
+
+// ───────── 기본 설정 ─────────
+const W = 480, H = 270;          // 논리 해상도 (16:9, 화면에 맞춰 픽셀 확대)
+const LANE = 120;                // 플레이어 1명당 가로 폭
+const GROUND = 222;              // 땅 높이
+const SEG = 24;                  // 나무 한 토막 높이
+const TRUNK = 26;                // 줄기 폭
+const BR = 34;                   // 가지 길이
+const NSEG = 9;                  // 화면에 보이는 토막 수
+const COMBO_GAP = 1.0;           // 이 시간(초) 안에 다음 도끼질을 해야 콤보 유지
+const COMBO_GOAL = 20;           // 콤보 이만큼마다 랜덤 효과
+const FX_TIME = 5;               // 지속형 효과 시간(초)
+const TIME_ADD = 0.06;           // 도끼질 1번당 시간 회복량
+
+const cv = document.getElementById("game");
+const ctx = cv.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+
+const PAL = {
+  ink: "#1a1c2c", white: "#f4f4f4", grey: "#94b0c2", slate: "#566c86", navy: "#333c57",
+  bark: "#8f563b", barkDark: "#663931", barkLight: "#b8764c",
+  leaf: "#38b764", leafLight: "#a7f070", leafDark: "#257179",
+  skin: "#f4b886", beard: "#b0603a", pants: "#333c57", boots: "#1a1c2c",
+  metal: "#c0cbdc", metalLight: "#ffffff",
+};
+
+const PLAYERS = [
+  { name: "P1", c: "#ff5c7a", d: "#a8284a", keys: ["A", "S"] },
+  { name: "P2", c: "#41a6f6", d: "#29366f", keys: ["G", "H"] },
+  { name: "P3", c: "#7bd94a", d: "#2f7a3b", keys: ["K", "L"] },
+  { name: "P4", c: "#ffcd3c", d: "#b8641e", keys: ["←", "→"] },
+];
+const KEYMAP = {
+  KeyA: [0, -1], KeyS: [0, 1],
+  KeyG: [1, -1], KeyH: [1, 1],
+  KeyK: [2, -1], KeyL: [2, 1],
+  ArrowLeft: [3, -1], ArrowRight: [3, 1],
+};
+
+// 20콤보 랜덤 효과: self=자신에게, 나머지는 살아 있는 상대 전원에게
+const EFFECTS = {
+  fever:   { name: "FEVER!",   ko: "시간정지+점수2배", chip: "피버", self: true,  color: "#ff9f1c" },
+  refill:  { name: "TIME MAX", ko: "시간 게이지 충전", chip: "",     self: true,  color: "#4cd964" },
+  shield:  { name: "SHIELD",   ko: "한 번 살아남기",   chip: "방패", self: true,  color: "#5ad1ff" },
+  clear:   { name: "CLEAR!",   ko: "가지 싹 제거",     chip: "",     self: true,  color: "#b8f35a" },
+  reverse: { name: "REVERSE",  ko: "상대 좌우 반전",   chip: "반전", self: false, color: "#c77dff" },
+  fog:     { name: "FOG",      ko: "상대 화면 안개",   chip: "안개", self: false, color: "#a9b4c2" },
+  haste:   { name: "HASTE",    ko: "상대 시간 2배속",  chip: "가속", self: false, color: "#ff4d4d" },
+};
+const EFFECT_KEYS = Object.keys(EFFECTS);
+
+// ───────── 유틸 ─────────
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function store(key, val) {
+  try {
+    if (val === undefined) return localStorage.getItem(key);
+    localStorage.setItem(key, val);
+  } catch (e) { /* 저장소를 못 쓰는 환경에서는 무시 */ }
+  return null;
+}
+
+// ───────── 소리 (WebAudio 칩튠) ─────────
+let AC = null, master = null;
+let soundOn = store("timber4.sound") !== "off";
+
+function audio() {
+  if (!AC) {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    AC = new Ctor();
+    master = AC.createGain();
+    master.gain.value = 0.5;
+    master.connect(AC.destination);
+  }
+  if (AC.state === "suspended") AC.resume();
+  return AC;
+}
+
+function tone(freq, dur, { type = "square", vol = 0.08, to = null, delay = 0 } = {}) {
+  if (!soundOn) return;
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + delay;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+const sfx = {
+  chop()     { tone(260, 0.06, { to: 90, vol: 0.05 }); tone(90, 0.05, { type: "triangle", vol: 0.12 }); },
+  die()      { tone(440, 0.5, { to: 60, vol: 0.09 }); tone(220, 0.5, { type: "triangle", to: 40, vol: 0.12, delay: 0.05 }); },
+  tick()     { tone(880, 0.03, { vol: 0.03 }); },
+  count()    { tone(523, 0.12, { vol: 0.07 }); },
+  go()       { tone(784, 0.1, { vol: 0.07 }); tone(1046, 0.25, { vol: 0.07, delay: 0.1 }); },
+  combo()    { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.08, { vol: 0.05, delay: i * 0.05 })); },
+  good()     { [659, 784, 988, 1318].forEach((f, i) => tone(f, 0.1, { vol: 0.06, delay: i * 0.07 })); },
+  bad()      { [392, 330, 262].forEach((f, i) => tone(f, 0.12, { type: "sawtooth", vol: 0.04, delay: i * 0.08 })); },
+  shield()   { tone(1200, 0.2, { to: 300, vol: 0.06 }); tone(600, 0.15, { type: "triangle", vol: 0.1 }); },
+  join()     { tone(660, 0.06, { vol: 0.05 }); tone(990, 0.08, { vol: 0.05, delay: 0.06 }); },
+  leave()    { tone(500, 0.08, { vol: 0.04, to: 300 }); },
+  win()      { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, 0.14, { vol: 0.06, delay: i * 0.11 })); },
+};
+
+// 배경 음악: 16스텝 루프
+const BGM = {
+  bass: [45, 0, 45, 52, 48, 0, 48, 55, 43, 0, 43, 50, 47, 0, 47, 52],
+  lead: [69, 72, 76, 0, 74, 72, 69, 0, 67, 71, 74, 0, 72, 71, 67, 0],
+  step: 0, next: 0, timer: null,
+};
+const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+function bgmStart() {
+  if (BGM.timer || !soundOn) return;
+  const ac = audio();
+  if (!ac) return;
+  BGM.step = 0;
+  BGM.next = ac.currentTime + 0.05;
+  BGM.timer = setInterval(() => {
+    const spb = 60 / 150 / 2;
+    while (BGM.next < AC.currentTime + 0.2) {
+      const s = BGM.step % 16;
+      const delay = Math.max(0, BGM.next - AC.currentTime);
+      if (BGM.bass[s]) tone(midi(BGM.bass[s]), spb * 0.9, { type: "triangle", vol: 0.07, delay });
+      if (BGM.lead[s] && BGM.step % 32 >= 16) tone(midi(BGM.lead[s]), spb * 0.7, { type: "square", vol: 0.018, delay });
+      BGM.step++;
+      BGM.next += spb;
+    }
+  }, 50);
+}
+function bgmStop() { clearInterval(BGM.timer); BGM.timer = null; }
+
+// ───────── 게임 상태 ─────────
+let state = "lobby";   // lobby | countdown | play | result
+let stateT = 0;
+let seed = 1;
+let best = parseInt(store("timber4.best") || "0", 10) || 0;
+let lastCount = -1;
+let resultRanks = [];
+const floaters = [];
+
+const players = PLAYERS.map((def, i) => ({
+  i, def, joined: false,
+  cx: i * LANE + LANE / 2,
+  side: -1, alive: true, deadT: 0, cause: "",
+  segs: [], rng: null,
+  score: 0, chops: 0, timer: 0.6,
+  combo: 0, lastChop: -99, comboFlash: 0,
+  fx: { fever: 0, reverse: 0, fog: 0, haste: 0 },
+  shield: false,
+  roul: null, banner: null, flash: 0,
+  anim: 0, drop: 0, shake: 0,
+  press: { "-1": 0, "1": 0 },
+  logs: [], parts: [],
+}));
+
+function nextSeg(p) {
+  const prev = p.segs.length ? p.segs[p.segs.length - 1].b : 0;
+  const v = Math.floor(p.rng() * 4);
+  if (p.segs.length < 3) return { b: 0, v };
+  // 가지 바로 위에 반대쪽 가지가 오면 피할 수 없으므로, 가지 다음은 빈칸이거나 같은 쪽만
+  if (prev !== 0) return { b: p.rng() < 0.6 ? 0 : prev, v };
+  const r = p.rng();
+  return { b: r < 0.38 ? -1 : r < 0.76 ? 1 : 0, v };
+}
+
+function resetPlayer(p) {
+  p.rng = mulberry32(seed);   // 같은 시드 → 모두 똑같은 나무로 공정하게 대결
+  p.segs = [];
+  for (let k = 0; k < NSEG + 1; k++) p.segs.push(nextSeg(p));
+  p.side = -1; p.alive = true; p.deadT = 0; p.cause = "";
+  p.score = 0; p.chops = 0; p.timer = 0.6;
+  p.combo = 0; p.lastChop = -99; p.comboFlash = 0;
+  p.fx = { fever: 0, reverse: 0, fog: 0, haste: 0 };
+  p.shield = false; p.roul = null; p.banner = null; p.flash = 0;
+  p.anim = 0; p.drop = 0; p.shake = 0;
+  p.logs = []; p.parts = [];
+}
+
+function joinedPlayers() { return players.filter((p) => p.joined); }
+
+function setState(s) {
+  state = s; stateT = 0; lastCount = -1;
+  if (s === "play") bgmStart();
+  if (s === "result" || s === "lobby") bgmStop();
+}
+
+function startGame() {
+  if (!joinedPlayers().length) return;
+  seed = (Math.random() * 1e9) | 0;
+  players.forEach(resetPlayer);
+  setState("countdown");
+}
+
+function toLobby() {
+  seed = (Math.random() * 1e9) | 0;
+  players.forEach(resetPlayer);
+  setState("lobby");
+}
+
+// ───────── 파티클 ─────────
+function chips(p, x, y, n, colors, spread = 1) {
+  for (let k = 0; k < n; k++) {
+    p.parts.push({
+      x, y, vx: rand(-90, 90) * spread, vy: rand(-160, -40),
+      c: colors[k % colors.length], life: rand(0.4, 0.8), s: Math.random() < 0.3 ? 2 : 1,
+    });
+  }
+}
+function leaves(p, seg, idx) {
+  const y = GROUND - (idx + 1) * SEG + 10;
+  const x = p.cx + seg.b * (TRUNK / 2 + BR);
+  chips(p, x, y, 14, [PAL.leaf, PAL.leafLight, PAL.leafDark, PAL.bark], 1.3);
+}
+
+// ───────── 조작 ─────────
+function chop(p, dir) {
+  if (state !== "play" || !p.joined || !p.alive) return;
+  if (p.fx.reverse > 0) dir = -dir;
+  p.side = dir;
+  p.anim = 0.09;
+  p.press[dir] = 0.12;
+
+  // 가지 쪽으로 걸어 들어가면 탈락
+  if (p.segs[0].b === dir && !useShield(p)) return die(p, "branch");
+
+  const cut = p.segs.shift();
+  p.segs.push(nextSeg(p));
+  p.drop = SEG;
+  p.logs.push({
+    x: p.cx, y: GROUND - SEG / 2, vx: -dir * rand(200, 260), vy: rand(-170, -110),
+    rot: 0, vr: -dir * rand(9, 14), seg: cut, life: 1.2,
+  });
+  chips(p, p.cx - dir * 12, GROUND - 12, 6, [PAL.barkLight, PAL.bark, "#e4a672"]);
+  sfx.chop();
+
+  // 새로 내려온 토막의 가지에 깔리면 탈락
+  if (p.segs[0].b === dir && !useShield(p)) return die(p, "squash");
+
+  const now = performance.now() / 1000;
+  if (now - p.lastChop > COMBO_GAP) p.combo = 0;
+  p.combo++;
+  p.lastChop = now;
+  p.chops++;
+  p.score += p.fx.fever > 0 ? 2 : 1;
+  p.timer = Math.min(1, p.timer + TIME_ADD);
+
+  if (p.combo % COMBO_GOAL === 0) startRoulette(p);
+}
+
+function useShield(p) {
+  if (!p.shield) return false;
+  p.shield = false;
+  leaves(p, p.segs[0], 0);
+  p.segs[0].b = 0;
+  p.banner = { title: "SHIELD!", sub: "방패가 막았다!", color: EFFECTS.shield.color, t: 1.4 };
+  p.flash = 0.25;
+  sfx.shield();
+  return true;
+}
+
+function die(p, cause) {
+  p.alive = false;
+  p.cause = cause;
+  p.deadT = 0;
+  p.shake = 0.35;
+  p.roul = null;
+  p.fx = { fever: 0, reverse: 0, fog: 0, haste: 0 };
+  chips(p, p.cx + p.side * 30, GROUND - 20, 18, [PAL.white, p.def.c, PAL.skin, PAL.bark], 1.5);
+  sfx.die();
+}
+
+// ───────── 20콤보 랜덤 효과 ─────────
+function startRoulette(p) {
+  const rivals = players.filter((q) => q !== p && q.joined && q.alive);
+  const pool = EFFECT_KEYS.filter((k) => {
+    if (!EFFECTS[k].self && !rivals.length) return false;   // 혼자 남으면 공격 효과 제외
+    if (k === "shield" && p.shield) return false;
+    return true;
+  });
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  p.roul = { t: 0, dur: 1.0, idx: Math.floor(Math.random() * EFFECT_KEYS.length), acc: 0, pick };
+  p.banner = null;
+  p.comboFlash = 0.6;
+  sfx.combo();
+}
+
+function applyEffect(p, key) {
+  const e = EFFECTS[key];
+  p.banner = { title: e.name, sub: e.ko, color: e.color, t: 1.8 };
+  p.flash = 0.3;
+  switch (key) {
+    case "fever": p.fx.fever = FX_TIME; break;
+    case "refill": p.timer = 1; break;
+    case "shield": p.shield = true; break;
+    case "clear":
+      p.segs.forEach((s, idx) => { if (s.b) { leaves(p, s, idx); s.b = 0; } });
+      break;
+    default:
+      players.forEach((q) => {
+        if (q === p || !q.joined || !q.alive) return;
+        q.fx[key] = FX_TIME;
+        q.banner = { title: e.name, sub: `${p.def.name}의 공격!`, color: e.color, t: 1.8, from: p.def.c };
+        q.flash = 0.3;
+        q.shake = Math.max(q.shake, 0.2);
+      });
+  }
+  if (e.self) sfx.good(); else sfx.bad();
+}
+
+// ───────── 업데이트 ─────────
+function update(dt) {
+  stateT += dt;
+  const now = performance.now() / 1000;
+
+  if (state === "countdown") {
+    const n = 3 - Math.floor(stateT / 0.8);
+    if (n !== lastCount) {
+      lastCount = n;
+      if (n > 0) sfx.count(); else if (n === 0) sfx.go();
+    }
+    if (stateT >= 3 * 0.8) setState("play");
+  }
+
+  for (const p of players) {
+    p.anim = Math.max(0, p.anim - dt);
+    p.drop = Math.max(0, p.drop - dt * SEG * 14);
+    p.shake = Math.max(0, p.shake - dt);
+    p.flash = Math.max(0, p.flash - dt);
+    p.comboFlash = Math.max(0, p.comboFlash - dt);
+    p.press[-1] = Math.max(0, p.press[-1] - dt);
+    p.press[1] = Math.max(0, p.press[1] - dt);
+    if (p.banner) { p.banner.t -= dt; if (p.banner.t <= 0) p.banner = null; }
+
+    for (const l of p.logs) { l.vy += 700 * dt; l.x += l.vx * dt; l.y += l.vy * dt; l.rot += l.vr * dt; l.life -= dt; }
+    p.logs = p.logs.filter((l) => l.life > 0 && l.y < H + 40);
+    for (const q of p.parts) { q.vy += 500 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }
+    p.parts = p.parts.filter((q) => q.life > 0);
+
+    if (state !== "play" || !p.joined) continue;
+    if (!p.alive) { p.deadT += dt; continue; }
+
+    for (const k in p.fx) p.fx[k] = Math.max(0, p.fx[k] - dt);
+    if (now - p.lastChop > COMBO_GAP) p.combo = 0;
+
+    // 시간 게이지: 많이 벨수록 빨리 줄어듦
+    let rate = 0.12 + Math.min(p.chops, 300) * 0.0012;
+    if (p.fx.haste > 0) rate *= 2;
+    if (p.fx.fever > 0) rate = 0;
+    p.timer -= rate * dt;
+    if (p.timer <= 0) {
+      if (p.shield) {
+        p.shield = false; p.timer = 0.4;
+        p.banner = { title: "SHIELD!", sub: "시간 보충!", color: EFFECTS.shield.color, t: 1.4 };
+        sfx.shield();
+      } else {
+        p.timer = 0;
+        die(p, "time");
+      }
+    }
+
+    if (p.roul) {
+      const r = p.roul;
+      r.t += dt; r.acc += dt;
+      const interval = 0.04 + r.t * 0.12;
+      if (r.acc >= interval) { r.acc = 0; r.idx = (r.idx + 1) % EFFECT_KEYS.length; sfx.tick(); }
+      if (r.t >= r.dur) { p.roul = null; if (p.alive) applyEffect(p, r.pick); }
+    }
+  }
+
+  if (state === "play") {
+    const js = joinedPlayers();
+    if (js.every((p) => !p.alive) && js.every((p) => p.deadT > 1.0)) finishGame();
+  }
+
+  for (const f of floaters) f.t -= dt;
+  while (floaters.length && floaters[0].t <= 0) floaters.shift();
+}
+
+function finishGame() {
+  const js = joinedPlayers().slice().sort((a, b) => b.score - a.score);
+  resultRanks = js.map((p) => ({ p, rank: 1 + js.filter((q) => q.score > p.score).length }));
+  const top = js[0] ? js[0].score : 0;
+  if (top > best) { best = top; store("timber4.best", String(best)); }
+  setState("result");
+  sfx.win();
+}
+
+// ───────── 그리기 도구 ─────────
+function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+
+function text(s, x, y, { size = 12, color = PAL.white, align = "left", shadow = PAL.ink, outline = false } = {}) {
+  ctx.font = `${size}px Galmuri, monospace`;
+  ctx.textAlign = align;
+  ctx.textBaseline = "top";
+  x = Math.round(x); y = Math.round(y);
+  if (shadow) {
+    ctx.fillStyle = shadow;
+    if (outline) {
+      const o = size >= 24 ? 2 : 1;
+      for (const [dx, dy] of [[-o, 0], [o, 0], [0, -o], [0, o], [o, o]]) ctx.fillText(s, x + dx, y + dy);
+    } else {
+      ctx.fillText(s, x + 1, y + 1);
+    }
+  }
+  ctx.fillStyle = color;
+  ctx.fillText(s, x, y);
+}
+
+function panel(x, y, w, h, border = PAL.white, fill = PAL.ink) {
+  rect(x + 2, y, w - 4, h, fill);
+  rect(x, y + 2, w, h - 4, fill);
+  rect(x + 2, y, w - 4, 1, border); rect(x + 2, y + h - 1, w - 4, 1, border);
+  rect(x, y + 2, 1, h - 4, border); rect(x + w - 1, y + 2, 1, h - 4, border);
+  rect(x + 1, y + 1, 1, 1, border); rect(x + w - 2, y + 1, 1, 1, border);
+  rect(x + 1, y + h - 2, 1, 1, border); rect(x + w - 2, y + h - 2, 1, 1, border);
+}
+
+// 나무꾼 스프라이트 (오른쪽을 보는 기준, 12x16, 2배로 그림)
+const BODY = [
+  "....HHHH....",
+  "...HHHHHH...",
+  "..HHHHHHHH..",
+  "..HSSSSSS...",
+  "..SSSSKSSS..",
+  "..SSSSSSSSS.",
+  "..EESSSSEE..",
+  "..EEEEEEEE..",
+  "...EEEEEE...",
+  "..CCDCCDCC..",
+  ".CCCDCCDCCC.",
+  ".SCCDCCDCCS.",
+  "..PPPPPPPP..",
+  "..PPP..PPP..",
+  "..PPP..PPP..",
+  ".BBBB..BBBB.",
+];
+
+function drawLumberjack(p, x, y, face, chopping, scale = 2) {
+  const pal = { H: p.def.d, S: PAL.skin, K: PAL.ink, E: PAL.beard, C: p.def.c, D: p.def.d, P: PAL.pants, B: PAL.boots };
+  // 스프라이트 좌표 → 화면 좌표 (face=-1이면 좌우 뒤집기)
+  const px = (sx, w) => (face > 0 ? x + sx * scale : x + (12 - sx - w) * scale);
+  const r = (sx, sy, w, h, c) => rect(px(sx, w), y + sy * scale, w * scale, h * scale, c);
+  for (let row = 0; row < 16; row++) {
+    const line = BODY[row];
+    for (let col = 0; col < 12; col++) {
+      const ch = line[col];
+      if (ch !== ".") r(col, row, 1, 1, pal[ch]);
+    }
+  }
+  if (chopping) {
+    r(10, 10, 6, 1, PAL.bark);        // 도끼 자루 (앞으로)
+    r(15, 7, 3, 6, PAL.metal);        // 도끼 날
+    r(17, 7, 1, 6, PAL.metalLight);
+  } else {
+    r(0, 2, 1, 10, PAL.bark);         // 도끼 자루 (등 뒤로)
+    r(-3, 1, 3, 4, PAL.metal);
+    r(-3, 1, 1, 4, PAL.metalLight);
+  }
+}
+
+function drawGrave(x, y) {
+  rect(x + 3, y, 16, 2, PAL.grey);
+  rect(x + 1, y + 2, 20, 22, PAL.grey);
+  rect(x + 1, y + 2, 2, 22, PAL.white);
+  rect(x + 19, y + 2, 2, 22, PAL.slate);
+  rect(x - 2, y + 24, 26, 3, PAL.slate);
+  rect(x + 10, y + 5, 2, 10, PAL.slate);
+  rect(x + 7, y + 8, 8, 2, PAL.slate);
+}
+
+function drawSegment(cx, top, seg) {
+  const x = cx - TRUNK / 2;
+  rect(x, top, TRUNK, SEG, PAL.bark);
+  rect(x, top, 3, SEG, PAL.barkLight);
+  rect(x + TRUNK - 4, top, 4, SEG, PAL.barkDark);
+  // 나무껍질 무늬 (토막마다 조금씩 다르게)
+  const o = seg.v * 3;
+  rect(x + 7 + (o % 6), top + 3, 2, 8, PAL.barkDark);
+  rect(x + 14 - (o % 4), top + 12, 2, 9, PAL.barkDark);
+  rect(x + 19, top + 4 + (o % 7), 1, 5, PAL.barkDark);
+  rect(x, top + SEG - 1, TRUNK, 1, PAL.barkDark);
+  if (seg.b) {
+    const bx = seg.b < 0 ? x - BR : x + TRUNK;
+    rect(bx, top + 6, BR, 7, PAL.bark);
+    rect(bx, top + 6, BR, 2, PAL.barkLight);
+    rect(bx, top + 12, BR, 1, PAL.barkDark);
+    // 잎 뭉치
+    const lx = seg.b < 0 ? bx - 8 : bx + BR - 6;
+    rect(lx, top + 1, 14, 16, PAL.leaf);
+    rect(lx - 2, top + 4, 18, 10, PAL.leaf);
+    rect(lx + 2, top + 2, 5, 3, PAL.leafLight);
+    rect(lx, top + 5, 3, 3, PAL.leafLight);
+    rect(lx + 8, top + 12, 6, 4, PAL.leafDark);
+    rect(lx - 2, top + 11, 4, 3, PAL.leafDark);
+  }
+}
+
+// ───────── 배경 (한 번만 그려 둠) ─────────
+const bg = document.createElement("canvas");
+bg.width = W; bg.height = H;
+(function paintBackground() {
+  const b = bg.getContext("2d");
+  const r = (x, y, w, h, c) => { b.fillStyle = c; b.fillRect(x, y, w, h); };
+  const bands = [["#29366f", 0], ["#3b5dc9", 50], ["#41a6f6", 100], ["#73eff7", 150]];
+  for (let k = 0; k < bands.length; k++) {
+    const [c, y0] = bands[k];
+    const y1 = k + 1 < bands.length ? bands[k + 1][1] : GROUND;
+    r(0, y0, W, y1 - y0, c);
+    if (k > 0) { // 디더링 경계
+      const prev = bands[k - 1][0];
+      for (let y = y0; y < y0 + 4; y++) for (let x = (y % 2); x < W; x += 2) if ((y - y0) < 2 || x % 4 < 2) r(x, y, 1, 1, prev);
+    }
+  }
+  // 해
+  r(392, 58, 22, 22, "#ffcd75"); r(390, 60, 26, 18, "#ffcd75"); r(394, 60, 6, 6, "#fff3c4");
+  // 구름
+  const cloud = (x, y, s) => {
+    r(x, y + 4 * s, 30 * s, 6 * s, PAL.white);
+    r(x + 5 * s, y, 12 * s, 6 * s, PAL.white);
+    r(x + 14 * s, y + 2 * s, 10 * s, 4 * s, PAL.white);
+    r(x, y + 9 * s, 30 * s, 1 * s, PAL.grey);
+  };
+  cloud(30, 72, 1); cloud(150, 58, 1); cloud(260, 86, 1); cloud(340, 110, 1); cloud(90, 120, 1);
+  // 먼 산
+  for (let x = 0; x < W; x++) {
+    const h = 58 + Math.sin(x * 0.021) * 18 + Math.sin(x * 0.057 + 1) * 9;
+    r(x, GROUND - h, 1, h, "#566c86");
+    if (h > 70) r(x, GROUND - h, 1, 3, "#c0cbdc");
+  }
+  // 가까운 숲
+  for (let x = 0; x < W; x += 2) {
+    const h = 24 + Math.abs(Math.sin(x * 0.09)) * 16 + Math.sin(x * 0.31) * 4;
+    r(x, GROUND - h, 2, h, "#257179");
+  }
+  for (let x = 0; x < W; x += 2) {
+    const h = 12 + Math.abs(Math.sin(x * 0.13 + 2)) * 10;
+    r(x, GROUND - h, 2, h, "#1f5a55");
+  }
+  // 땅
+  r(0, GROUND, W, H - GROUND, "#5d3a2a");
+  r(0, GROUND, W, 5, PAL.leaf);
+  r(0, GROUND, W, 1, PAL.leafLight);
+  for (let x = 0; x < W; x += 6) r(x + ((x * 7) % 4), GROUND + 5, 3, 2, "#257179");
+  for (let k = 0; k < 90; k++) r((k * 97) % W, GROUND + 9 + ((k * 53) % (H - GROUND - 10)), 2, 1, "#3e2731");
+})();
+
+// ───────── 장면 그리기 ─────────
+function laneShake(p) {
+  if (p.shake <= 0) return [0, 0];
+  const a = p.shake * 10;
+  return [Math.round(rand(-a, a)), Math.round(rand(-a, a) * 0.5)];
+}
+
+function drawLane(p, t) {
+  const x0 = p.i * LANE;
+  const active = p.joined || state === "lobby";
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x0, 0, LANE, H); ctx.clip();
+  const [sx, sy] = laneShake(p);
+  ctx.translate(sx, sy);
+
+  if (p.fx.fever > 0) {
+    ctx.globalAlpha = 0.18 + 0.1 * Math.sin(t * 14);
+    rect(x0, 0, LANE, GROUND, t * 6 % 2 < 1 ? "#ff9f1c" : "#ff5c7a");
+    ctx.globalAlpha = 1;
+  }
+
+  if (active) {
+    // 그루터기
+    rect(p.cx - 17, GROUND - 3, 34, 4, PAL.barkDark);
+    rect(p.cx - 15, GROUND - 5, 30, 2, PAL.barkDark);
+    for (let k = 0; k < p.segs.length; k++) {
+      const top = GROUND - (k + 1) * SEG - p.drop;
+      if (top < -SEG) break;
+      drawSegment(p.cx, top, p.segs[k]);
+    }
+  }
+
+  // 날아가는 토막
+  for (const l of p.logs) {
+    ctx.save();
+    ctx.translate(Math.round(l.x), Math.round(l.y));
+    ctx.rotate(l.rot);
+    drawSegment(0, -SEG / 2, l.seg);
+    ctx.restore();
+  }
+
+  if (p.joined || state === "lobby") {
+    const px = p.cx + p.side * 30 - 12;
+    if (p.joined && !p.alive) {
+      drawGrave(p.cx + p.side * 30 - 11, GROUND - 27);
+    } else if (p.joined) {
+      const bob = state === "lobby" && Math.floor(t * 3) % 2 ? 1 : 0;
+      drawLumberjack(p, px, GROUND - 32 + bob, -p.side, p.anim > 0);
+      if (p.shield && Math.floor(t * 8) % 2) {
+        ctx.strokeStyle = EFFECTS.shield.color; ctx.lineWidth = 1;
+        ctx.strokeRect(px - 4.5, GROUND - 37.5, 33, 38);
+      }
+    }
+  }
+
+  for (const q of p.parts) rect(q.x, q.y, q.s + 1, q.s + 1, q.c);
+
+  // 안개: 가장 아래 두 토막만 보임
+  if (p.fx.fog > 0) {
+    const fogBottom = GROUND - 2 * SEG - 6;
+    ctx.globalAlpha = Math.min(1, p.fx.fog * 2) * 0.95;
+    rect(x0, 0, LANE, fogBottom, "#20243a");
+    for (let x = 0; x < LANE; x += 4) {
+      const h = 3 + ((x * 13 + Math.floor(t * 6) * 7) % 9);
+      rect(x0 + x, fogBottom, 4, h, "#20243a");
+    }
+    ctx.globalAlpha = 0.25 * ctx.globalAlpha;
+    for (let k = 0; k < 4; k++) {
+      const fx = x0 + ((t * 18 + k * 37) % (LANE + 30)) - 15;
+      rect(fx, 70 + k * 22, 24, 6, PAL.grey);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  if (p.flash > 0) {
+    ctx.globalAlpha = p.flash * 1.6;
+    rect(x0, 0, LANE, H, PAL.white);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  // 참가하지 않은 칸은 어둡게
+  if (state !== "lobby" && !p.joined) {
+    ctx.globalAlpha = 0.72; rect(x0, 0, LANE, H, "#0d0e17"); ctx.globalAlpha = 1;
+    text("EMPTY", p.cx, 120, { align: "center", color: PAL.slate });
+  }
+}
+
+function drawButtons(p, t) {
+  const x0 = p.i * LANE;
+  const rev = p.fx.reverse > 0;
+  for (const dir of [-1, 1]) {
+    const bx = dir < 0 ? x0 + 6 : x0 + 64;
+    const by = 234, bw = 50, bh = 30;
+    const pressed = p.press[dir] > 0;
+    const border = rev ? EFFECTS.reverse.color : p.def.c;
+    const fill = pressed ? border : rev ? "#3a1f55" : PAL.ink;
+    panel(bx, by + (pressed ? 1 : 0), bw, bh, border, fill);
+    // 반전 중에는 화살표도 반대로 표시
+    const ad = rev ? -dir : dir;
+    const ax = bx + bw / 2, ay = by + bh / 2 + (pressed ? 1 : 0);
+    const ac = pressed ? PAL.ink : PAL.white;
+    // 머리(삼각형) + 꼬리(막대), 가운데 정렬
+    const hx = ax + ad * 3;
+    for (let k = 0; k < 7; k++) {
+      const h = 2 * (7 - k) - 1;
+      rect(hx + ad * (k - 3) - (ad < 0 ? 1 : 0), ay - (h - 1) / 2, 1, h, ac);
+    }
+    rect(ad > 0 ? hx - 10 : hx + 3, ay - 2, 8, 5, ac);
+  }
+  if (rev && Math.floor(t * 4) % 2) text("반전!", p.cx, 216, { align: "center", color: EFFECTS.reverse.color, outline: true });
+}
+
+function drawHud(p, t) {
+  const x0 = p.i * LANE;
+  if (!p.joined) return;
+  ctx.globalAlpha = 0.82; rect(x0, 0, LANE, 46, PAL.ink); ctx.globalAlpha = 1;
+  rect(x0, 45, LANE, 1, p.def.d);
+
+  // 이름표
+  panel(x0 + 3, 2, 26, 15, p.def.c, p.def.c);
+  text(p.def.name, x0 + 16, 3, { align: "center", color: PAL.ink, shadow: null });
+  // 선두 왕관
+  const js = joinedPlayers();
+  if (js.length > 1 && p.score > 0 && js.every((q) => q === p || q.score < p.score)) {
+    const cx = x0 + 32;
+    rect(cx, 7, 11, 6, "#ffcd3c"); rect(cx, 4, 2, 3, "#ffcd3c"); rect(cx + 4, 3, 3, 4, "#ffcd3c"); rect(cx + 9, 4, 2, 3, "#ffcd3c");
+    rect(cx + 2, 9, 2, 2, "#ff5c7a"); rect(cx + 7, 9, 2, 2, "#41a6f6");
+  }
+  // 점수
+  text(String(p.score), x0 + LANE - 5, 1, { size: 24, align: "right", color: p.fx.fever > 0 ? "#ffcd3c" : PAL.white });
+  // 콤보 숫자
+  if (p.combo >= 2) {
+    const c = p.comboFlash > 0 && Math.floor(t * 12) % 2 ? "#ffcd3c" : PAL.grey;
+    text(`${p.combo} COMBO`, x0 + 4, 17, { color: c });
+  }
+
+  // 시간 게이지
+  const bx = x0 + 4, by = 30, bw = LANE - 8;
+  rect(bx, by, bw, 7, PAL.navy);
+  let col = p.timer > 0.5 ? "#4cd964" : p.timer > 0.25 ? "#ffcd3c" : "#ff4d4d";
+  if (p.fx.haste > 0 && Math.floor(t * 8) % 2) col = "#ff9f1c";
+  if (p.fx.fever > 0) col = Math.floor(t * 10) % 2 ? "#ff9f1c" : "#ffcd3c";
+  const low = p.alive && p.timer < 0.25 && Math.floor(t * 6) % 2;
+  rect(bx + 1, by + 1, Math.round((bw - 2) * clamp(p.timer, 0, 1)), 5, low ? PAL.white : col);
+  rect(bx + 1, by + 1, Math.round((bw - 2) * clamp(p.timer, 0, 1)), 1, "rgba(255,255,255,.45)");
+
+  // 20콤보 게이지 (칸 20개)
+  const filled = p.roul ? COMBO_GOAL : p.combo % COMBO_GOAL;
+  for (let k = 0; k < COMBO_GOAL; k++) {
+    const on = k < filled;
+    const c = on ? (p.roul && Math.floor(t * 12) % 2 ? PAL.white : "#ffcd3c") : PAL.navy;
+    rect(x0 + 10 + k * 5, 39, 4, 4, c);
+  }
+
+  // 지속 효과 표시
+  const chipsOn = [];
+  for (const k of ["fever", "reverse", "fog", "haste"]) if (p.fx[k] > 0) chipsOn.push([EFFECTS[k].chip + " " + Math.ceil(p.fx[k]), EFFECTS[k].color]);
+  if (p.shield) chipsOn.push([EFFECTS.shield.chip, EFFECTS.shield.color]);
+  let cx = x0 + 3, cy = 48;
+  for (const [label, color] of chipsOn) {
+    ctx.font = "12px Galmuri, monospace";
+    const w = Math.ceil(ctx.measureText(label).width) + 6;
+    if (cx + w > x0 + LANE - 2) { cx = x0 + 3; cy += 15; }
+    panel(cx, cy, w, 14, color, PAL.ink);
+    text(label, cx + 3, cy + 1, { color, shadow: null });
+    cx += w + 2;
+  }
+
+  // 룰렛 / 효과 배너
+  const py = 78;
+  if (p.roul) {
+    const e = EFFECTS[EFFECT_KEYS[p.roul.idx]];
+    panel(x0 + 6, py, LANE - 12, 38, Math.floor(t * 10) % 2 ? "#ffcd3c" : PAL.white);
+    text("20 COMBO!", p.cx, py + 3, { align: "center", color: "#ffcd3c" });
+    text(e.name, p.cx, py + 20, { align: "center", color: e.color });
+  } else if (p.banner) {
+    const b = p.banner;
+    const pop = b.t > 1.55 ? 2 : 0;
+    panel(x0 + 4 - pop, py - pop, LANE - 8 + pop * 2, 44 + pop * 2, b.color);
+    text(b.title, p.cx, py + 3, { size: 24, align: "center", color: b.color });
+    text(b.sub, p.cx, py + 28, { align: "center", color: b.from || PAL.white });
+  }
+
+  // 탈락 표시
+  if (!p.alive && state !== "lobby") {
+    const a = Math.min(1, p.deadT * 2);
+    ctx.globalAlpha = 0.55 * a; rect(x0, 46, LANE, GROUND - 46, "#0d0e17"); ctx.globalAlpha = 1;
+    if (a >= 1 || Math.floor(t * 10) % 2) {
+      text("KO", p.cx, 120, { size: 36, align: "center", color: "#ff4d4d", outline: true });
+      const why = p.cause === "time" ? "시간 초과" : p.cause === "branch" ? "가지에 쾅!" : "가지에 깔림!";
+      text(why, p.cx, 160, { align: "center", color: PAL.white, outline: true });
+    }
+  }
+}
+
+function drawLobby(t) {
+  panel(92, 8, 296, 92, "#ffcd3c");
+  text("TIMBER", 200, 14, { size: 36, align: "center", color: "#ffcd3c", outline: true });
+  text("x4", 318, 26, { size: 24, align: "center", color: "#ff5c7a", outline: true });
+  text("왼쪽·오른쪽을 터치해서 나무를 베세요", 240, 52, { align: "center" });
+  text("가지에 맞거나 시간이 다 되면 탈락!", 240, 66, { align: "center", color: PAL.grey });
+  text(`20콤보마다 랜덤 효과 발동!   BEST ${best}`, 240, 80, { align: "center", color: "#ffcd3c" });
+
+  for (const p of players) {
+    const x0 = p.i * LANE;
+    panel(x0 + 8, 106, LANE - 16, 46, p.joined ? p.def.c : PAL.slate, p.joined ? PAL.ink : "#20243a");
+    text(p.def.name, p.cx, 108, { size: 24, align: "center", color: p.joined ? p.def.c : PAL.slate });
+    if (p.joined) text("READY!", p.cx, 134, { align: "center", color: "#ffcd3c" });
+    else if (Math.floor(t * 2.5) % 2) text("터치해서 참가", p.cx, 134, { align: "center", color: PAL.white });
+    if (!p.joined) text(`키: ${p.def.keys[0]} / ${p.def.keys[1]}`, p.cx, 200, { align: "center", color: PAL.grey, outline: true });
+  }
+
+  const n = joinedPlayers().length;
+  const b = BTN.start;
+  const blink = n && Math.floor(t * 3) % 2;
+  panel(b.x, b.y, b.w, b.h, n ? PAL.white : PAL.slate, n ? (blink ? "#ff5c7a" : "#a8284a") : "#20243a");
+  text(n ? `START (${n}명)` : "참가자 없음", b.x + b.w / 2, b.y + 8, { align: "center", color: n ? PAL.white : PAL.slate, shadow: n ? PAL.ink : null });
+
+  const s = BTN.sound, f = BTN.full;
+  panel(s.x, s.y, s.w, s.h, PAL.grey);
+  text(soundOn ? "소리 ON" : "소리 OFF", s.x + s.w / 2, s.y + 3, { align: "center", color: soundOn ? PAL.white : PAL.slate, shadow: null });
+  panel(f.x, f.y, f.w, f.h, PAL.grey);
+  text(document.fullscreenElement ? "창 모드" : "전체화면", f.x + f.w / 2, f.y + 3, { align: "center", shadow: null });
+}
+
+function drawCountdown() {
+  const n = 3 - Math.floor(stateT / 0.8);
+  const frac = (stateT % 0.8) / 0.8;
+  const size = frac < 0.15 ? 72 : 60;
+  text(n > 0 ? String(n) : "GO!", W / 2, 96 - (size - 60) / 2, { size, align: "center", color: n > 0 ? PAL.white : "#ffcd3c", outline: true });
+}
+
+function drawResult(t) {
+  const h = 60 + resultRanks.length * 26 + 40;
+  const y0 = Math.round((H - h) / 2);
+  panel(110, y0, 260, h, "#ffcd3c");
+  const winners = resultRanks.filter((r) => r.rank === 1);
+  const title = resultRanks.length === 1 ? "GAME OVER"
+    : winners.length > 1 ? "무승부!" : `${winners[0].p.def.name} 승리!`;
+  const tc = resultRanks.length > 1 && winners.length === 1 ? winners[0].p.def.c : "#ffcd3c";
+  text(title, 240, y0 + 8, { size: 24, align: "center", color: tc, outline: true });
+  text(`BEST ${best}`, 240, y0 + 36, { align: "center", color: PAL.grey });
+
+  resultRanks.forEach((r, k) => {
+    const y = y0 + 56 + k * 26;
+    const rc = r.rank === 1 ? "#ffcd3c" : r.rank === 2 ? PAL.metal : r.rank === 3 ? "#e4a672" : PAL.slate;
+    panel(126, y, 228, 22, r.p.def.c, PAL.ink);
+    text(`${r.rank}위`, 134, y + 5, { color: rc });
+    text(r.p.def.name, 176, y + 5, { color: r.p.def.c });
+    text(`${r.p.chops}번 베기`, 210, y + 5, { color: PAL.grey });
+    text(String(r.p.score), 346, y + 1, { size: 24, align: "right", color: PAL.white });
+  });
+
+  const ready = stateT > 1.0;
+  const a = BTN.retry, m = BTN.menu;
+  a.y = m.y = y0 + h - 34;
+  panel(a.x, a.y, a.w, a.h, ready ? PAL.white : PAL.slate, ready ? "#a8284a" : "#20243a");
+  text("다시하기", a.x + a.w / 2, a.y + 6, { align: "center", color: ready ? PAL.white : PAL.slate });
+  panel(m.x, m.y, m.w, m.h, ready ? PAL.white : PAL.slate, ready ? PAL.navy : "#20243a");
+  text("참가자 변경", m.x + m.w / 2, m.y + 6, { align: "center", color: ready ? PAL.white : PAL.slate });
+}
+
+const BTN = {
+  start: { x: 176, y: 160, w: 128, h: 28 },
+  sound: { x: 180, y: 244, w: 58, h: 18 },
+  full:  { x: 242, y: 244, w: 58, h: 18 },
+  retry: { x: 126, y: 0, w: 110, h: 26 },
+  menu:  { x: 244, y: 0, w: 110, h: 26 },
+};
+const hit = (b, x, y) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
+
+function draw(t) {
+  ctx.drawImage(bg, 0, 0);
+  for (const p of players) drawLane(p, t);
+  for (let k = 1; k < 4; k++) { rect(k * LANE - 1, 0, 2, H, PAL.ink); }
+  if (state !== "lobby") for (const p of players) if (p.joined) drawButtons(p, t);
+  for (const p of players) if (state !== "lobby") drawHud(p, t);
+  if (state === "lobby") drawLobby(t);
+  if (state === "countdown") drawCountdown();
+  if (state === "result") drawResult(t);
+}
+
+// ───────── 입력 ─────────
+function toCanvas(e) {
+  const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)];
+}
+
+function toggleJoin(p) {
+  p.joined = !p.joined;
+  resetPlayer(p);
+  if (p.joined) sfx.join(); else sfx.leave();
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  store("timber4.sound", soundOn ? "on" : "off");
+  if (!soundOn) bgmStop();
+  else { audio(); sfx.join(); if (state === "play") bgmStart(); }
+}
+
+cv.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  audio();
+  const [x, y] = toCanvas(e);
+  if (x < 0 || x >= W || y < 0 || y >= H) return;
+  const lane = clamp(Math.floor(x / LANE), 0, 3);
+  const p = players[lane];
+
+  if (state === "lobby") {
+    if (hit(BTN.start, x, y)) return startGame();
+    if (hit(BTN.sound, x, y)) return toggleSound();
+    if (hit(BTN.full, x, y)) return toggleFullscreen();
+    return toggleJoin(p);
+  }
+  if (state === "result") {
+    if (stateT < 1.0) return;
+    if (hit(BTN.retry, x, y)) return startGame();
+    if (hit(BTN.menu, x, y)) return toLobby();
+    return;
+  }
+  if (state === "play") {
+    const dir = x - lane * LANE < LANE / 2 ? -1 : 1;
+    chop(p, dir);
+  }
+});
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
+
+window.addEventListener("keydown", (e) => {
+  audio();
+  if (e.code === "KeyF") return toggleFullscreen();
+  if (e.code === "KeyM") return toggleSound();
+  if (e.code === "Escape") return toLobby();
+  const m = KEYMAP[e.code];
+  if (m) e.preventDefault();
+  if (e.repeat) return;
+  if (state === "lobby") {
+    if (e.code === "Space" || e.code === "Enter") return startGame();
+    if (m) toggleJoin(players[m[0]]);
+    return;
+  }
+  if (state === "result") {
+    if ((e.code === "Space" || e.code === "Enter") && stateT >= 1.0) startGame();
+    return;
+  }
+  if (state === "play" && m) chop(players[m[0]], m[1]);
+});
+
+// 화면을 16:9로 꽉 채우기
+function fit() {
+  const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+  cv.style.width = Math.floor(W * s) + "px";
+  cv.style.height = Math.floor(H * s) + "px";
+}
+window.addEventListener("resize", fit);
+document.addEventListener("fullscreenchange", fit);
+fit();
+
+// ───────── 메인 루프 ─────────
+toLobby();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw(now / 1000);
+  requestAnimationFrame(frame);
+}
+(document.fonts ? document.fonts.load("12px Galmuri") : Promise.resolve())
+  .catch(() => {})
+  .then(() => requestAnimationFrame(frame));
+</script>
+</body>
+</html>
