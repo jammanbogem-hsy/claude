@@ -3,7 +3,8 @@ from pathlib import Path
 here = Path(__file__).parent
 src = (here / "src/app.src.html").read_text()
 seed = (here / "vendor/seed-design/seed-subset.css").read_text()
-page = src.replace("/*@SEED_CSS@*/", seed)
+mapjs = (here / "data/haengdang-map.js").read_text()
+page = src.replace("/*@SEED_CSS@*/", seed).replace("/*@MAP_DATA@*/", mapjs)
 (here / "app.html").write_text(page)
 head_end = page.index("</style>", page.index("/* 레이아웃")) + len("</style>")
 doc = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
