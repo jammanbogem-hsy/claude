@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important}body{margin:0}</style>
+<title>런웨더 한강</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* 레이아웃: 왼쪽 아이폰 목업(앱), 오른쪽 교사용 시연판. 좁은 화면에서는 위아래로 쌓기 */
+:root{
+  --bg:#E9EEEC; --fg:#13201C; --muted:#5A6863; --panel:#FFFFFF; --line:#D3DCD8; --chip:#E1E8E5;
+  --accent:#D9481A; --accent-ink:#FFFFFF;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1412; --fg:#E5EDEA; --muted:#93A29C; --panel:#161F1C; --line:#28332F; --chip:#1F2926;
+  --accent:#FF6B35; --accent-ink:#1A0A03; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1412; --fg:#E5EDEA; --muted:#93A29C; --panel:#161F1C; --line:#28332F; --chip:#1F2926;
+  --accent:#FF6B35; --accent-ink:#1A0A03; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+.stage{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,426px) minmax(0,1fr);gap:48px;align-items:start}
+@media (max-width:900px){.stage{grid-template-columns:minmax(0,1fr);gap:32px}.phone-col{justify-self:center;width:100%;max-width:426px}}
+.phone-col{position:sticky;top:20px}
+@media (max-width:900px){.phone-col{position:static}}
+
+/* ───────── 아이폰 16 Pro 목업 (화면 402×874pt) ───────── */
+.phone-holder{position:relative;width:426px;height:898px;margin:0 auto}
+.phone{position:absolute;left:0;top:0;width:426px;height:898px;transform-origin:0 0;border-radius:68px;padding:12px;
+  background:linear-gradient(145deg,#9A958C 0%,#6E6A63 18%,#C9C4BA 40%,#77736B 62%,#B3AEA4 85%,#7E7A72 100%);
+  box-shadow:0 0 0 1.5px #4A4741 inset,0 0 0 4px #1D1C1A inset,0 30px 60px -20px rgba(10,20,16,.45),0 10px 24px rgba(10,20,16,.18)}
+.phone::before,.phone::after{content:"";position:absolute;background:#7A766E;border-radius:2px}
+.phone::before{left:-3px;top:190px;width:4px;height:64px;box-shadow:0 84px 0 #7A766E,0 -60px 0 -0px #7A766E}
+.phone::after{right:-3px;top:250px;width:4px;height:100px}
+.screen-wrap{position:relative;width:402px;height:874px;border-radius:56px;overflow:hidden;background:#000}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:126px;height:37px;border-radius:20px;background:#000;z-index:30}
+.island::after{content:"";position:absolute;right:16px;top:12px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2B3650,#0A0D14 70%)}
+
+/* ───────── 앱 내부 (앱 고유의 밝은 화면으로 고정) ───────── */
+.screen{
+  --a-bg:#F2F4F3; --a-ink:#121D19; --a-sub:#5D6A65; --a-card:#FFFFFF; --a-line:#E1E6E4;
+  --a-track:#D9481A; --a-track-soft:#FBE3D8; --a-good:#16865A; --a-warn:#B86E00; --a-bad:#C9302C; --a-roof:#344452;
+  --sky1:#7FB7E8; --sky2:#DDEBF6; --sky-ink:#0E2236;
+  position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;background:var(--a-bg);color:var(--a-ink);
+  font-family:var(--f-body);font-size:14px;scrollbar-width:none;color-scheme:light}
+.screen::-webkit-scrollbar{display:none}
+.screen[data-w="hot"]{--sky1:#F59A4E;--sky2:#FCE3C8;--sky-ink:#3A1404}
+.screen[data-w="humid"]{--sky1:#7DB3AC;--sky2:#DCEBE6;--sky-ink:#0D2B27}
+.screen[data-w="cold"]{--sky1:#A9B8E6;--sky2:#EDF0FA;--sky-ink:#141C3B}
+.screen[data-w="rain"]{--sky1:#56667A;--sky2:#C9D2DC;--sky-ink:#0B1520}
+.screen[data-w="dust"]{--sky1:#C2AE84;--sky2:#EEE7D6;--sky-ink:#2D2210}
+.screen[data-w="wind"]{--sky1:#8CC6D9;--sky2:#E2F1F5;--sky-ink:#0B2A33}
+
+.statusbar{position:sticky;top:0;z-index:20;height:54px;display:flex;align-items:center;justify-content:space-between;padding:6px 34px 0 46px;
+  font-weight:600;font-size:16px;color:var(--sky-ink);background:color-mix(in srgb,var(--sky1) 86%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.statusbar .sb-icons{display:flex;gap:6px;align-items:center}
+.statusbar svg{display:block;fill:currentColor}
+
+.wx{position:relative;margin-top:-54px;padding:62px 18px 18px;background:linear-gradient(180deg,var(--sky1) 0%,var(--sky2) 78%,var(--a-bg) 100%);color:var(--sky-ink);overflow:hidden}
+.wx.raining::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.35;
+  background-image:repeating-linear-gradient(105deg,transparent 0 9px,rgba(255,255,255,.7) 9px 10px,transparent 10px 23px);
+  background-size:60px 120px;animation:rain .6s linear infinite}
+@keyframes rain{to{background-position:-22px 120px}}
+.wx > *{position:relative}
+.wx-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.loc{display:flex;align-items:center;gap:5px;font-weight:600;font-size:15px}
+.src{font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;background:rgba(255,255,255,.55);letter-spacing:.02em}
+.date{font-size:12.5px;opacity:.75;margin-top:2px}
+.temp-row{display:flex;align-items:flex-end;gap:14px;margin:6px 0 14px}
+.temp{font-family:var(--f-display);font-weight:600;font-size:156px;line-height:.82;letter-spacing:-6px;font-variant-numeric:tabular-nums;margin-left:-4px}
+.temp sup{font-size:.42em;vertical-align:top;position:relative;top:.12em;letter-spacing:0;margin-left:2px}
+.temp-side{padding-bottom:10px;display:grid;gap:3px;min-width:0}
+.sky{font-size:20px;font-weight:700}
+.feels{font-size:13.5px;opacity:.85}
+.verdict{margin-top:4px;font-size:12px;font-weight:700;padding:4px 9px;border-radius:8px;background:var(--sky-ink);color:var(--sky2);justify-self:start}
+
+.factors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fac{background:rgba(255,255,255,.72);backdrop-filter:blur(6px);border-radius:14px;padding:9px 10px 10px;display:grid;gap:2px;color:var(--a-ink)}
+.fac-h{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--a-sub);font-weight:500}
+.fac-h svg{width:14px;height:14px;flex:none}
+.fac-v{font-family:var(--f-display);font-size:24px;font-weight:600;line-height:1.05;font-variant-numeric:tabular-nums}
+.fac-v small{font-size:13px;font-weight:500;margin-left:1px;color:var(--a-sub)}
+.badge{justify-self:start;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.02em}
+.b-good{background:#DDF2E7;color:var(--a-good)} .b-warn{background:#FCEBCB;color:var(--a-warn)} .b-bad{background:#F9DCDA;color:var(--a-bad)}
+
+section.blk{padding:18px 16px 4px}
+.blk h3{margin:0 0 10px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--a-sub);text-transform:uppercase;margin-bottom:6px}
+
+/* 메인 히어로: 오늘의 추천 */
+.hero{border-radius:22px;padding:18px;color:#fff;background:var(--a-track);position:relative;overflow:hidden;
+  background-image:repeating-linear-gradient(90deg,transparent 0 46px,rgba(255,255,255,.14) 46px 48px)}
+.hero.rain{background-color:var(--a-roof)}
+.hero-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.04em;opacity:.92}
+.hero-mode{padding:3px 9px;border-radius:99px;background:rgba(255,255,255,.2)}
+.hero-main{display:flex;align-items:center;gap:14px;margin:12px 0 6px}
+.lane{flex:none;width:58px;height:58px;border-radius:16px;background:#fff;color:var(--a-track);display:grid;place-items:center;
+  font-family:var(--f-display);font-weight:700;font-size:32px;line-height:1}
+.hero.rain .lane{color:var(--a-roof);font-size:24px}
+.hero-name{font-size:19px;font-weight:700;line-height:1.25;text-wrap:balance}
+.hero-area{font-size:12.5px;opacity:.85;margin-top:2px}
+.hero-dist{font-family:var(--f-display);font-weight:700;font-size:64px;line-height:.95;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+.hero-dist small{font-size:24px;margin-left:4px;letter-spacing:0}
+.hero-meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;font-weight:500;margin-top:4px;opacity:.95}
+.why{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.why span{font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:99px;background:rgba(0,0,0,.18)}
+
+/* 코스 카드 */
+.clist{display:grid;gap:8px}
+.ccard{all:unset;cursor:pointer;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;
+  background:var(--a-card);border:1.5px solid var(--a-line);border-radius:16px;padding:11px 12px}
+.ccard:focus-visible{outline:2.5px solid var(--a-track);outline-offset:2px}
+.ccard[aria-pressed="true"]{border-color:var(--a-track);background:#FFF8F5}
+.ccard.closed{opacity:.6}
+.cl{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:22px;background:var(--a-track-soft);color:var(--a-track)}
+.rainmode .cl{background:#E2E8EE;color:var(--a-roof);font-size:18px}
+.cn{font-weight:700;font-size:14.5px}
+.cd{font-size:12px;color:var(--a-sub);margin-top:2px;line-height:1.4}
+.cr{text-align:right;display:grid;gap:4px;justify-items:end}
+.ck{font-family:var(--f-display);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums;line-height:1}
+.ck small{font-size:12px;color:var(--a-sub);margin-left:1px}
+.st{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px}
+.st-rec{background:var(--a-track);color:#fff} .st-ok{background:#E8EDEB;color:var(--a-sub)} .st-no{background:#F9DCDA;color:var(--a-bad)} .st-shut{background:#2B2F33;color:#fff}
+
+.rain-note{display:flex;gap:10px;align-items:flex-start;background:#E4EAF0;color:var(--a-roof);border-radius:14px;padding:10px 12px;font-size:12.5px;line-height:1.5;margin-bottom:10px}
+.rain-note svg{flex:none;margin-top:2px}
+
+/* 2D / 3D 보기 */
+.vhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.vhead h3{margin:0}
+.seg{display:flex;background:#E3E8E6;border-radius:10px;padding:3px}
+.seg button{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;color:var(--a-sub)}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--a-ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.seg button:focus-visible{outline:2px solid var(--a-track)}
+.vbox{position:relative;border-radius:18px;overflow:hidden;background:#D7E6D2;height:300px;border:1px solid var(--a-line)}
+#map2d{display:block;width:100%;height:100%}
+#view3d{position:absolute;inset:0;touch-action:none;cursor:grab}
+#view3d canvas{display:block}
+.vcap{position:absolute;left:10px;bottom:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.vcap span{font-size:11px;font-weight:600;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,.88);color:var(--a-ink)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:var(--a-sub);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:5px;vertical-align:middle}
+
+.tips ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.tips li{display:flex;gap:10px;align-items:flex-start;background:var(--a-card);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.45;border:1px solid var(--a-line)}
+.tips li b{flex:none;min-width:52px;font-size:11.5px;color:var(--a-track);font-weight:700;padding-top:1px}
+.foot{padding:16px 16px 40px;font-size:11px;color:var(--a-sub);line-height:1.5}
+.homebar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:140px;height:5px;border-radius:3px;background:#111;z-index:30;opacity:.85}
+
+/* ───────── 교사용 시연판 ───────── */
+.panel{min-width:0;display:grid;gap:22px}
+.intro h1{font-family:var(--f-body);font-size:clamp(26px,3.2vw,36px);margin:0 0 8px;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+.intro p{margin:0;color:var(--muted);line-height:1.65;max-width:62ch;font-size:15px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--accent);margin-bottom:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px 20px}
+.card h2{font-size:16px;margin:0 0 4px;font-weight:700}
+.card .sub{font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.55}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+.presets button{font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:9px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--fg)}
+.presets button:hover{border-color:var(--accent)}
+.presets button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.presets button:focus-visible,.live:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+.sliders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px;margin-top:18px}
+@media (max-width:520px){.sliders{grid-template-columns:minmax(0,1fr)}}
+.sl label{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:4px}
+.sl output{font-variant-numeric:tabular-nums;color:var(--accent)}
+.sl input{width:100%;accent-color:var(--accent)}
+.live-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
+.live{font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;padding:8px 14px;border-radius:10px;border:1.5px solid var(--fg);background:transparent;color:var(--fg)}
+.live-msg{font-size:12.5px;color:var(--muted);flex:1;min-width:200px;line-height:1.5}
+.rules{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.rules li{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px;line-height:1.45;color:var(--muted)}
+.rules li:first-child{border-top:0}
+.rules .dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);margin-top:4px}
+.rules li.on{color:var(--fg)}
+.rules li.on .dot{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent)}
+.rules li.on .then{font-weight:600}
+.rules .when b{font-weight:600}
+.rule-head{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr);gap:10px;font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--muted);padding-bottom:6px}
+.code{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:12.5px;background:var(--chip);border-radius:12px;padding:14px 16px;overflow-x:auto;line-height:1.6;white-space:pre;color:var(--fg)}
+.code .k{color:var(--accent);font-weight:600}
+.code .c{color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.wx.raining::before{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <!-- ① 아이폰 16 Pro 목업 -->
+  <div class="phone-col">
+    <div class="phone-holder" id="holder">
+      <div class="phone" id="phone">
+        <div class="screen-wrap">
+          <div class="island" aria-hidden="true"></div>
+          <div class="screen" id="screen" data-w="clear">
+            <div class="statusbar">
+              <span>9:41</span>
+              <span class="sb-icons" aria-hidden="true">
+                <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 2.2c2.4 0 4.6.9 6.3 2.5l1.2-1.3A10.6 10.6 0 0 0 8 .4 10.6 10.6 0 0 0 .5 3.4l1.2 1.3A9 9 0 0 1 8 2.2Zm0 3.6c1.4 0 2.7.5 3.7 1.4l1.2-1.3A7.2 7.2 0 0 0 8 4a7.2 7.2 0 0 0-4.9 1.9l1.2 1.3c1-.9 2.3-1.4 3.7-1.4Zm0 3.5c.5 0 1 .2 1.3.5L8 11.6 6.7 9.8c.3-.3.8-.5 1.3-.5Z"/></svg>
+                <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="17" height="9" rx="2"/><rect x="24.5" y="4.5" width="2" height="4" rx="1" opacity=".45"/></svg>
+              </span>
+            </div>
+
+            <!-- 날씨 영역: 기온을 가장 크게 -->
+            <header class="wx" id="wx">
+              <div class="wx-top">
+                <div class="loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>서울 · 한강공원</div>
+                <div class="src" id="src">예시 날씨</div>
+              </div>
+              <div class="date" id="date"></div>
+              <div class="temp-row">
+                <div class="temp" id="temp" aria-label="기온">7<sup>°</sup></div>
+                <div class="temp-side">
+                  <div class="sky" id="sky">맑음</div>
+                  <div class="feels" id="feels">체감 5°</div>
+                  <div class="verdict" id="verdict">달리기 좋은 날</div>
+                </div>
+              </div>
+              <div class="factors" id="factors"></div>
+            </header>
+
+            <!-- 메인 히어로: 오늘의 추천 -->
+            <section class="blk">
+              <div class="eyebrow">오늘의 러닝 추천</div>
+              <div class="hero" id="hero"></div>
+            </section>
+
+            <section class="blk" id="courseBlk">
+              <h3 id="courseTitle">한강 코스 고르기</h3>
+              <div id="rainNote"></div>
+              <div class="clist" id="clist"></div>
+            </section>
+
+            <section class="blk">
+              <div class="vhead">
+                <h3>코스 미리보기</h3>
+                <div class="seg" role="group" aria-label="보기 방식">
+                  <button type="button" id="b2d" aria-pressed="true">2D 지도</button>
+                  <button type="button" id="b3d" aria-pressed="false">3D 보기</button>
+                </div>
+              </div>
+              <div class="vbox">
+                <svg id="map2d" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid slice" role="img" aria-label="한강 코스 지도"></svg>
+                <div id="view3d" hidden></div>
+                <div class="vcap"><span id="capL">코스 A</span><span id="capR">손가락으로 돌려 보세요</span></div>
+              </div>
+              <div class="legend" id="legend"></div>
+            </section>
+
+            <section class="blk tips">
+              <h3>달리기 전 체크</h3>
+              <ul id="tips"></ul>
+            </section>
+            <div class="foot">지도와 코스 길이는 수업용 예시입니다. 실제 한강공원 길과 다를 수 있어요.</div>
+          </div>
+          <div class="homebar" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② 교사용 시연판 -->
+  <div class="panel">
+    <div class="intro">
+      <div class="kicker">5학년 날씨 앱 만들기 · 선생님 예시</div>
+      <h1>런웨더: 날씨를 읽고 한강 러닝 코스를 짜 주는 앱</h1>
+      <p>앱은 날씨를 읽고, 러닝에 영향을 주는 요소를 하나씩 판단한 뒤, 코스와 거리를 정해요. 아래에서 날씨를 바꾸면 휴대폰 화면의 추천이 바로 바뀝니다. 비가 오면 한강 코스 A·B·C는 사라지고 지붕이 있는 길만 남아요.</p>
+    </div>
+
+    <div class="card">
+      <h2>날씨 바꿔 보기</h2>
+      <p class="sub">버튼으로 상황을 고르거나, 막대를 움직여 숫자를 직접 바꿔 보세요.</p>
+      <div class="presets" id="presets"></div>
+      <div class="sliders" id="sliders"></div>
+      <div class="live-row">
+        <button class="live" id="liveBtn" type="button">실시간 서울 날씨 불러오기</button>
+        <div class="live-msg" id="liveMsg">Open-Meteo(키가 필요 없는 무료 날씨 API)에서 서울 한강 날씨를 가져옵니다.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>앱이 따르는 "만약 ~라면" 규칙</h2>
+      <p class="sub">지금 날씨에서 켜진 규칙에 주황색 불이 들어와요. 학생들이 숫자를 바꿔 자기만의 규칙을 만들어 볼 수 있어요.</p>
+      <div class="rule-head"><span></span><span>만약</span><span>그러면</span></div>
+      <ul class="rules" id="rules"></ul>
+    </div>
+
+    <div class="card">
+      <h2>코드로 보면 이렇게 생겼어요</h2>
+      <p class="sub">규칙 하나는 조건 하나와 결과 하나로 이루어져요.</p>
+<div class="code"><span class="c">// 비가 오면 지붕 있는 코스만 보여 주기</span>
+<span class="k">if</span> (강수량 >= 0.2) {
+  코스목록 = [잠수교, 고가아래길, 지하보도];
+}
+<span class="c">// 덥거나 습하면 거리를 줄이기</span>
+<span class="k">if</span> (체감온도 >= 28) 거리 = 거리 * 0.65;
+<span class="k">if</span> (습도 >= 80)     거리 = 거리 * 0.8;</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =========================================================
+   런웨더 한강 — 날씨에 따라 러닝 코스와 거리를 추천하는 앱
+   1) 날씨 데이터  2) 규칙으로 판단  3) 화면 그리기(2D/3D)
+   ========================================================= */
+
+// ---------- 1. 날씨 예시 상황 ----------
+const PRESETS = {
+  today: { label:'오늘(예시)', temp:7,  humidity:55, precip:0,  wind:3.2, uv:2, pm10:38 },
+  nice:  { label:'선선한 날', temp:16, humidity:50, precip:0,  wind:2.5, uv:4, pm10:25 },
+  hot:   { label:'폭염',     temp:33, humidity:62, precip:0,  wind:1.8, uv:9, pm10:40 },
+  humid: { label:'습한 날',   temp:27, humidity:88, precip:0,  wind:1.5, uv:5, pm10:45 },
+  cold:  { label:'한파',     temp:-7, humidity:40, precip:0,  wind:4.5, uv:1, pm10:30 },
+  windy: { label:'강풍',     temp:11, humidity:45, precip:0,  wind:9.5, uv:3, pm10:20 },
+  dust:  { label:'미세먼지',  temp:14, humidity:50, precip:0,  wind:1.2, uv:3, pm10:120 },
+  rain:  { label:'비',       temp:17, humidity:92, precip:3.5,wind:3.0, uv:1, pm10:15 },
+  storm: { label:'폭우',     temp:23, humidity:97, precip:24, wind:7.5, uv:0, pm10:10 },
+};
+let W = { ...PRESETS.today };
+let presetKey = 'today';
+let source = '예시 날씨';
+
+// ---------- 2. 한강 지도(수업용 단순 지도) ----------
+// 지도 좌표: 가로 0~100(서→동), 세로 0~60(북→남)
+const riverY = x => 30 + 7 * Math.sin((x - 10) / 16);   // 강 가운데 선
+const RIVER_HALF = 5;                                    // 강 폭의 절반
+const BRIDGES = [
+  { x:16, name:'마포대교' }, { x:31, name:'한강대교' }, { x:42, name:'동작대교' },
+  { x:50, name:'반포대교·잠수교', double:true }, { x:72, name:'영동대교' }, { x:88, name:'잠실대교' },
+];
+const PLACES = [
+  { x:15, off:15.5, name:'여의도' }, { x:53, off:16.5, name:'반포' }, { x:61, off:15.5, name:'잠원' },
+  { x:79, off:-15.5, name:'뚝섬' }, { x:90, off:15.5, name:'잠실' }, { x:31, off:-16, name:'용산' },
+];
+const P = (x, off, h = 0, cov = false) => [x, riverY(x) + off, h, cov];
+function along(off, x0, x1, h = 0, cov = false) {
+  const pts = [], n = Math.max(2, Math.round(Math.abs(x1 - x0)));
+  for (let i = 0; i <= n; i++) pts.push(P(x0 + (x1 - x0) * i / n, off, h, cov));
+  return pts;
+}
+function cross(x, o0, o1, deck, covFn = () => false) {
+  const pts = [], n = 14;
+  for (let i = 0; i <= n; i++) {
+    const o = o0 + (o1 - o0) * i / n, a = Math.abs(o);
+    const h = a <= 5.6 ? deck : a <= 6.2 ? deck * 0.5 : 0;
+    pts.push(P(x, o, h, covFn(o)));
+  }
+  return pts;
+}
+
+// 평소 코스 A, B, C (shade=그늘, water=물·쉼터, open=바람에 노출된 정도)
+const RUN_COURSES = [
+  { id:'A', name:'여의도 숲길 순환', area:'여의도 한강공원', base:5, loop:true, shade:3, water:2, open:1,
+    feature:'나무 그늘이 많고 평평해요', pts:() => [...along(6.5, 8, 24), ...along(9, 24, 8)] },
+  { id:'B', name:'반포 ↔ 잠원 강변길', area:'반포 한강공원', base:7, loop:false, shade:1, water:3, open:2,
+    feature:'분수와 편의점이 있어 쉬어 가기 좋아요', pts:() => along(6.5, 46, 62) },
+  { id:'C', name:'뚝섬 ↔ 잠실 다리 순환', area:'뚝섬·잠실 한강공원', base:10, loop:true, shade:0, water:1, open:3,
+    feature:'탁 트인 강변, 다리 두 개를 건너요',
+    pts:() => [...along(-6.5, 72, 88), ...cross(88, -6.5, 6.5, .38), ...along(6.5, 88, 72), ...cross(72, 6.5, -6.5, .38)] },
+];
+// 비 오는 날 코스 (unit = 한 번 왕복한 거리)
+const RAIN_COURSES = [
+  { id:'R1', short:'잠수', name:'잠수교 왕복', area:'반포대교 아래층 다리', unit:1.6,
+    feature:'위층 반포대교가 지붕이 되어 줘요',
+    pts:() => [...along(6.5, 46.5, 50), ...cross(50, 6.5, -6.5, .14, o => Math.abs(o) <= 6.6)] },
+  { id:'R2', short:'고가', name:'올림픽대로 고가 아래길', area:'동작대교 ↔ 반포대교', unit:2.0,
+    feature:'머리 위 고가도로가 비를 막아 줘요', pts:() => along(11, 40, 50, 0, true) },
+  { id:'R3', short:'지하', name:'반포 나들목 지하보도', area:'반포 나들목', unit:0.6,
+    feature:'지하 통로라 비가 들어오지 않아요',
+    pts:() => cross(55, 16, 6.5, 0, o => o >= 9 && o <= 13.2) },
+];
+
+// ---------- 3. 판단 규칙 ----------
+function feelsLike(t, rh, v) {
+  if (t <= 10 && v > 1.3) {            // 추운 날: 바람이 불면 더 춥게 느껴져요
+    const V = Math.pow(v * 3.6, 0.16);
+    return 13.12 + 0.6215 * t - 11.37 * V + 0.3965 * t * V;
+  }
+  if (t >= 26) return t + Math.max(0, rh - 40) * 0.08;  // 더운 날: 습하면 더 덥게 느껴져요
+  return t;
+}
+
+const RULES = [
+  { id:'rain',  when:'비가 오면 <b>(1시간 강수 0.2mm 이상)</b>', then:'지붕 있는 코스만 추천',      test:(w,f)=>w.precip>=0.2 },
+  { id:'storm', when:'비가 많이 오면 <b>(10mm 이상)</b>',        then:'잠수교 통제, 짧게 2km 안쪽', test:(w,f)=>w.precip>=10 },
+  { id:'hot',   when:'체감온도 <b>28° 이상</b>',                 then:'거리 35% 줄이기, 그늘 코스',  test:(w,f)=>f>=28, mult:.65 },
+  { id:'warm',  when:'체감온도 <b>25°~28°</b>',                  then:'거리 15% 줄이기',            test:(w,f)=>f>=25&&f<28, mult:.85 },
+  { id:'humid', when:'습도 <b>80% 이상</b>',                     then:'거리 20% 줄이고 천천히',      test:(w,f)=>w.humidity>=80, mult:.8 },
+  { id:'cold',  when:'체감온도 <b>-5°~2°</b>',                   then:'거리 20% 줄이기, 바람 막힌 코스', test:(w,f)=>f<=2&&f>-5, mult:.8 },
+  { id:'freeze',when:'체감온도 <b>-5° 이하</b>',                 then:'거리 40% 줄이기',            test:(w,f)=>f<=-5, mult:.6 },
+  { id:'wind',  when:'바람 <b>7m/s 이상</b>',                    then:'탁 트인 C코스 피하기',        test:(w,f)=>w.wind>=7, mult:.85 },
+  { id:'dust',  when:'미세먼지 <b>81㎍/㎥ 이상</b>',              then:'거리 절반, 실내 운동도 좋아요', test:(w,f)=>w.pm10>=81, mult:.5 },
+  { id:'uv',    when:'자외선 지수 <b>6 이상</b>',                 then:'모자·선크림, 이른 시간에',    test:(w,f)=>w.uv>=6 },
+  { id:'good',  when:'위의 주의 규칙이 <b>하나도 없으면</b>',      then:'원래 거리대로, 긴 코스도 OK', test:null },
+];
+
+const round05 = v => Math.round(v * 2) / 2;
+const fmtKm = v => (Math.round(v * 10) / 10).toFixed(1);
+
+function analyze(w) {
+  const feels = feelsLike(w.temp, w.humidity, w.wind);
+  const on = {};
+  RULES.forEach(r => { if (r.test) on[r.id] = r.test(w, feels); });
+  on.good = !RULES.some(r => r.test && r.id !== 'uv' && on[r.id]);
+  let mult = 1;
+  RULES.forEach(r => { if (on[r.id] && r.mult) mult *= r.mult; });
+  const rain = on.rain, heavy = on.storm;
+
+  // 페이스(1km에 걸리는 시간, 초) — 덥거나 습하면 천천히
+  let pace = 420;
+  if (on.hot) pace += 40; else if (on.warm) pace += 20;
+  if (on.humid) pace += 30;
+  if (on.wind) pace += 15;
+
+  let courses, rec;
+  if (!rain) {
+    courses = RUN_COURSES.map(c => {
+      let s = { A:1, B:2, C:3 }[c.id];
+      if (on.hot || on.warm) s += c.shade * 2 + c.water - c.open * 2;
+      if (on.humid) s += c.shade + c.water - c.open;
+      if (on.cold || on.freeze) s += -c.open * 2 + c.water * 1.5;
+      if (on.wind) s += -c.open * 3;
+      if (on.dust) s += -c.base / 2.5;
+      const dist = Math.min(c.base, Math.max(1.5, round05(c.base * mult)));
+      return { ...c, score:s, dist };
+    });
+    rec = courses.reduce((a, b) => b.score > a.score ? b : a);
+    courses.forEach(c => {
+      const avoid = (c.id === 'C' && (on.wind || on.hot)) || c.score < rec.score - 5;
+      c.status = c === rec ? 'rec' : avoid ? 'no' : 'ok';
+      c.reason = c.status === 'no' ? (c.id === 'C' && on.wind ? '바람이 강해 피해요' : c.id === 'C' && on.hot ? '그늘이 없어 피해요' : '오늘은 힘들어요') : c.feature;
+    });
+  } else {
+    const target = (heavy ? 1.8 : 3.2) * Math.min(1, mult / (on.humid ? .8 : 1));
+    courses = RAIN_COURSES.map(c => {
+      const laps = Math.max(1, Math.round(target / c.unit));
+      return { ...c, laps, dist: laps * c.unit };
+    });
+    const [r1, r2, r3] = courses;
+    if (heavy) {
+      r1.status = 'shut'; r1.reason = '강물이 불어나면 통제될 수 있어요';
+      r2.status = 'ok';  r2.reason = '옆에서 들이치는 비를 조심해요';
+      r3.status = 'rec'; r3.reason = r3.feature; rec = r3;
+    } else {
+      r1.status = 'rec'; r1.reason = r1.feature; rec = r1;
+      r2.status = 'ok';  r2.reason = r2.feature;
+      r3.status = 'ok';  r3.reason = '짧아서 여러 번 왕복해요';
+    }
+  }
+
+  // 화면 분위기
+  const theme = rain ? 'rain' : on.dust ? 'dust' : (on.hot || on.warm) ? 'hot' : on.humid ? 'humid'
+              : (on.cold || on.freeze) ? 'cold' : on.wind ? 'wind' : 'clear';
+
+  // 이유 표시
+  const why = [];
+  if (heavy) why.push('폭우라 지하보도를 골랐어요');
+  else if (rain) why.push('비가 와서 지붕 있는 길만');
+  if (on.hot) why.push(`체감 ${Math.round(feels)}° → 거리 35%↓`);
+  if (on.warm) why.push(`체감 ${Math.round(feels)}° → 거리 15%↓`);
+  if (on.humid && !rain) why.push(`습도 ${w.humidity}% → 20%↓`);
+  if (on.cold) why.push(`체감 ${Math.round(feels)}° → 바람 막힌 코스`);
+  if (on.freeze) why.push(`체감 ${Math.round(feels)}° → 거리 40%↓`);
+  if (on.wind && !rain) why.push(`바람 ${w.wind}m/s → C코스 제외`);
+  if (on.dust) why.push(`미세먼지 ${w.pm10} → 거리 절반`);
+  if (on.uv && !rain) why.push(`자외선 ${w.uv} → 이른 시간`);
+  if (on.good) why.push('날씨가 좋아 긴 코스 추천');
+
+  const time = rain ? '빗줄기가 약해질 때'
+    : (on.hot || on.warm || on.uv) ? '아침 7시 전 · 저녁 7시 후'
+    : (on.cold || on.freeze) ? '햇볕 드는 낮 12~3시' : '언제든 좋아요';
+
+  const tips = [];
+  if (rain) { tips.push(['신발', '바닥이 덜 미끄러운 운동화를 신어요']); tips.push(['안전', '고가 아래 물웅덩이와 자전거를 조심해요']); }
+  if (heavy) tips.push(['대안', '비가 아주 많이 오면 실내 줄넘기·제자리 달리기도 좋아요']);
+  if (on.hot || on.warm) tips.push(['물', '물 500ml를 챙기고 15분마다 한 모금']);
+  if (on.humid) tips.push(['페이스', '땀이 잘 안 말라요. 숨이 차면 걸어도 괜찮아요']);
+  if (on.uv && !rain) tips.push(['햇빛', '모자를 쓰고 선크림을 발라요']);
+  if (on.cold || on.freeze) { tips.push(['옷', '장갑·귀마개, 얇은 옷을 겹쳐 입어요']); tips.push(['준비', '실내에서 10분 동안 준비운동을 해요']); }
+  if (on.wind) tips.push(['바람', '맞바람 구간에서는 속도를 낮춰요']);
+  if (on.dust) tips.push(['마스크', 'KF94 마스크를 쓰거나 실내 운동으로 바꿔요']);
+  if (!tips.length) tips.push(['준비', '가볍게 5분 걷고 나서 달리기 시작해요']);
+  tips.push(['마무리', '다 달린 뒤 5분 걷기와 스트레칭']);
+
+  const verdict = heavy ? '오늘은 짧게만' : rain ? '지붕 아래로 달려요'
+    : on.dust ? '밖보다 실내 추천' : (on.hot || on.freeze) ? '조심해서 짧게'
+    : on.good ? '달리기 좋은 날' : '조금 조심해서';
+
+  return { feels, on, mult, rain, heavy, courses, rec, pace, time, tips, theme, why, verdict };
+}
+
+// ---------- 4. 화면 그리기 ----------
+const $ = s => document.querySelector(s);
+const ICON = {
+  hum:'<path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11Z"/>',
+  rain:'<path d="M7 15a4 4 0 0 1-.4-8A6 6 0 0 1 18 8a3.5 3.5 0 0 1-.5 7Z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  wind:'<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  feel:'<path d="M10 4a2 2 0 0 1 4 0v9.3a4 4 0 1 1-4 0Z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="16.5" r="2"/>',
+  uv:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  dust:'<circle cx="6" cy="8" r="2"/><circle cx="14" cy="6" r="1.5"/><circle cx="18" cy="13" r="2.4"/><circle cx="9" cy="15" r="2.8"/><circle cx="15" cy="19" r="1.4"/>',
+};
+const ico = k => `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${ICON[k]}</svg>`;
+const lvl = (v, ok, warn) => v <= ok ? ['good','좋음'] : v <= warn ? ['warn','보통'] : ['bad','주의'];
+
+function renderWeather(w, a) {
+  const screen = $('#screen');
+  screen.dataset.w = a.theme;
+  $('#wx').classList.toggle('raining', a.rain && !matchMedia('(prefers-reduced-motion: reduce)').matches);
+  $('#temp').innerHTML = `${Math.round(w.temp)}<sup>°</sup>`;
+  $('#sky').textContent = a.heavy ? '폭우' : a.rain ? '비' : w.pm10 >= 81 ? '뿌연 하늘' : w.humidity >= 85 ? '흐림' : w.wind >= 7 ? '바람 많음' : '맑음';
+  $('#feels').textContent = `체감 ${Math.round(a.feels)}°`;
+  $('#verdict').textContent = a.verdict;
+  $('#src').textContent = source;
+  const d = new Date();
+  $('#date').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일 · 러닝 날씨`;
+
+  const fl = a.feels >= 28 || a.feels <= -5 ? ['bad','주의'] : a.feels >= 25 || a.feels <= 2 ? ['warn','보통'] : ['good','좋음'];
+  const pr = w.precip >= 10 ? ['bad','폭우'] : w.precip >= .2 ? ['warn','비'] : ['good','없음'];
+  const facs = [
+    ['hum','습도', w.humidity, '%', lvl(w.humidity, 64, 79)],
+    ['rain','강수', w.precip, 'mm', pr],
+    ['wind','바람', w.wind, 'm/s', lvl(w.wind, 3.9, 6.9)],
+    ['feel','체감온도', Math.round(a.feels), '°', fl],
+    ['uv','자외선', w.uv, '', lvl(w.uv, 2, 5)],
+    ['dust','미세먼지', w.pm10, '㎍', w.pm10 <= 30 ? ['good','좋음'] : w.pm10 <= 80 ? ['warn','보통'] : ['bad','나쁨']],
+  ];
+  $('#factors').innerHTML = facs.map(([k, n, v, u, [c, t]]) => `
+    <div class="fac"><div class="fac-h">${ico(k)}${n}</div>
+    <div class="fac-v">${v}<small>${u}</small></div><span class="badge b-${c}">${t}</span></div>`).join('');
+}
+
+const paceTxt = s => `${Math.floor(s / 60)}분${s % 60 ? ' ' + (s % 60) + '초' : ''}`;
+
+function renderHero(a) {
+  const c = a.rec, h = $('#hero');
+  h.classList.toggle('rain', a.rain);
+  const min = Math.round(c.dist * a.pace / 60);
+  const lane = a.rain ? c.short : c.id;
+  const distLine = a.rain ? `${fmtKm(c.unit)}km 왕복 × ${c.laps}번` : (c.dist < c.base ? `원래 ${c.base}km에서 줄였어요` : `코스 전체 ${c.base}km`);
+  h.innerHTML = `
+    <div class="hero-top"><span>${a.rain ? '비 오는 날 모드' : '오늘의 코스'}</span><span class="hero-mode">${a.time}</span></div>
+    <div class="hero-main"><div class="lane">${lane}</div>
+      <div><div class="hero-name">${c.name}</div><div class="hero-area">${c.area}</div></div></div>
+    <div class="hero-dist">${fmtKm(c.dist)}<small>km</small></div>
+    <div class="hero-meta"><span>약 ${min}분</span><span>1km에 ${paceTxt(a.pace)}</span><span>${distLine}</span></div>
+    <div class="why">${a.why.map(t => `<span>${t}</span>`).join('')}</div>`;
+}
+
+let selected = null;
+function renderCourses(a) {
+  $('#courseBlk').classList.toggle('rainmode', a.rain);
+  $('#courseTitle').textContent = a.rain ? '비를 피하는 코스' : '한강 코스 고르기';
+  $('#rainNote').innerHTML = a.rain ? `<div class="rain-note"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 11 12 4l9 7v2H3Z"/><path d="M6 15l-1 3M12 15l-1 3M18 15l-1 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>비가 와서 평소 코스 A·B·C는 숨겼어요. 다리 아래, 고가 아래, 지하보도처럼 <b>지붕이 있는 길</b>만 보여 줘요.</span></div>` : '';
+  const ST = { rec:['st-rec','추천'], ok:['st-ok','가능'], no:['st-no','비추천'], shut:['st-shut','통제'] };
+  $('#clist').innerHTML = a.courses.map(c => {
+    const [cls, t] = ST[c.status];
+    return `<button type="button" class="ccard ${c.status === 'shut' ? 'closed' : ''}" data-id="${c.id}" aria-pressed="${c.id === selected}">
+      <div class="cl">${a.rain ? c.short : c.id}</div>
+      <div style="min-width:0"><div class="cn">${c.name}</div><div class="cd">${c.reason}</div></div>
+      <div class="cr"><div class="ck">${fmtKm(c.dist)}<small>km</small></div><span class="st ${cls}">${t}</span></div></button>`;
+  }).join('');
+  $('#clist').querySelectorAll('.ccard').forEach(b => b.onclick = () => { selected = b.dataset.id; renderCourses(A); drawRoute(); });
+}
+
+function renderTips(a) {
+  $('#tips').innerHTML = a.tips.slice(0, 5).map(([k, t]) => `<li><b>${k}</b><span>${t}</span></li>`).join('');
+}
+
+function renderRules(a) {
+  $('#rules').innerHTML = RULES.map(r => `<li class="${a.on[r.id] ? 'on' : ''}"><span class="dot"></span><span class="when">${r.when}</span><span class="then">${r.then}</span></li>`).join('');
+}
+
+// ---------- 5. 2D 지도 ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const pathD = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+function bandD(o0, o1) {
+  const top = [], bot = [];
+  for (let x = -2; x <= 102; x += 2) { top.push([x, riverY(x) + o0]); bot.unshift([x, riverY(x) + o1]); }
+  return pathD([...top, ...bot]) + 'Z';
+}
+function lineD(off) { const p = []; for (let x = -2; x <= 102; x += 2) p.push([x, riverY(x) + off]); return pathD(p); }
+
+function drawBase2D() {
+  const s = $('#map2d');
+  let g = `<rect x="-5" y="-5" width="110" height="70" fill="#DCE7D6"/>`;
+  // 도시 블록
+  for (let i = 0; i < 70; i++) {
+    const x = (i * 37.7) % 100, side = i % 2 ? 1 : -1, off = side * (15 + (i * 13.3) % 14);
+    g += `<rect x="${x.toFixed(1)}" y="${(riverY(x) + off).toFixed(1)}" width="${2 + i % 3}" height="${1.6 + (i % 4) * .5}" rx=".3" fill="#C9D4CC"/>`;
+  }
+  g += `<path d="${bandD(-9.5, 9.5)}" fill="#BFDDB2"/>`;               // 강변 공원
+  g += `<path d="${bandD(-RIVER_HALF, RIVER_HALF)}" fill="#7DB6D9"/>`; // 강
+  g += `<path d="${lineD(11)}" stroke="#9AA6AE" stroke-width="1.5" fill="none"/>`;
+  g += `<path d="${lineD(-11)}" stroke="#9AA6AE" stroke-width="1.5" fill="none"/>`;
+  g += `<text x="2" y="${(riverY(2) + 13.6).toFixed(1)}" font-size="1.7" fill="#5E6A70">올림픽대로(고가)</text>`;
+  g += `<text x="2" y="${(riverY(2) - 12.2).toFixed(1)}" font-size="1.7" fill="#5E6A70">강변북로</text>`;
+  BRIDGES.forEach(b => {
+    const y0 = riverY(b.x) - 6.5;
+    g += `<rect x="${b.x - .7}" y="${y0.toFixed(1)}" width="1.4" height="13" fill="${b.double ? '#6B7780' : '#8F9AA2'}"/>`;
+    g += `<text x="${b.x}" y="${(y0 - .8).toFixed(1)}" font-size="1.8" text-anchor="middle" fill="#3F4B52" font-weight="600">${b.name}</text>`;
+  });
+  PLACES.forEach(p => g += `<text x="${p.x}" y="${(riverY(p.x) + p.off).toFixed(1)}" font-size="2.6" text-anchor="middle" fill="#2E3B35" font-weight="700">${p.name}</text>`);
+  g += `<text x="60" y="${(riverY(60) + .8).toFixed(1)}" font-size="2.2" text-anchor="middle" fill="#FFFFFF" font-weight="600" letter-spacing=".5">한 강</text>`;
+  g += `<g id="r2d"></g>`;
+  s.innerHTML = g;
+}
+
+let routePts = [], routeLoop = false, routeEl = null, runner2d = null, routeLen = 0;
+function currentCourse() {
+  const list = A.courses;
+  return list.find(c => c.id === selected) || A.rec;
+}
+function drawRoute() {
+  const c = currentCourse();
+  routePts = c.pts(); routeLoop = !!c.loop;
+  const g = $('#r2d');
+  let h = '';
+  // 다른 코스는 흐리게
+  A.courses.forEach(o => { if (o.id !== c.id) h += `<path d="${pathD(o.pts())}${o.loop ? 'Z' : ''}" stroke="#ffffff" stroke-opacity=".75" stroke-width=".9" fill="none" stroke-dasharray="1.4 1"/>`; });
+  // 지붕(비를 막아 주는 부분) 표시
+  const cov = routePts.filter(p => p[3]);
+  if (cov.length > 1) h += `<path d="${pathD(cov)}" stroke="#344452" stroke-width="4.2" stroke-linecap="round" fill="none" opacity=".8"/>`;
+  h += `<path d="${pathD(routePts)}${routeLoop ? 'Z' : ''}" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" fill="none"/>`;
+  h += `<path id="rp" d="${pathD(routePts)}${routeLoop ? 'Z' : ''}" stroke="#D9481A" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" fill="none"/>`;
+  const s0 = routePts[0];
+  h += `<circle cx="${s0[0]}" cy="${s0[1]}" r="1.9" fill="#121D19"/><text x="${s0[0]}" y="${s0[1] + .75}" font-size="2" text-anchor="middle" fill="#fff" font-weight="700">S</text>`;
+  h += `<circle id="rn2" r="1.4" fill="#fff" stroke="#D9481A" stroke-width=".8"/>`;
+  g.innerHTML = h;
+  routeEl = $('#rp'); runner2d = $('#rn2'); routeLen = routeEl.getTotalLength();
+  // 지도 중심을 코스로 옮기기
+  const xs = routePts.map(p => p[0]), ys = routePts.map(p => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const vw = Math.max(46, (Math.max(...xs) - Math.min(...xs)) * 1.9);
+  const vh = vw * 300 / 370;
+  $('#map2d').setAttribute('viewBox', `${(cx - vw / 2).toFixed(1)} ${(cy - vh / 2).toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}`);
+  $('#capL').textContent = `${A.rain ? c.short : '코스 ' + c.id} · ${fmtKm(c.dist)}km`;
+  $('#legend').innerHTML = `<span><i style="background:#D9481A"></i>오늘 달릴 길</span><span><i style="background:#fff;border:1px solid #bbb"></i>다른 코스</span>` +
+    (A.rain ? `<span><i style="background:#344452"></i>지붕이 있는 구간</span>` : `<span><i style="background:#8F9AA2"></i>다리</span>`);
+  if (three) build3DRoute();
+}
+
+// ---------- 6. 3D 보기 (Three.js) ----------
+let three = null;
+const S = .2;                                    // 지도 1칸 = 0.2 (3D 단위)
+const toV = (x, y, h = 0) => new THREE.Vector3((x - 50) * S, h, (y - 30) * S);
+
+function groundTexture() {
+  const cv = document.createElement('canvas'); cv.width = 1000; cv.height = 600;
+  const g = cv.getContext('2d'), k = 10;
+  g.fillStyle = '#CFE0C8'; g.fillRect(0, 0, 1000, 600);
+  const band = (o0, o1, col) => {
+    g.beginPath();
+    for (let x = 0; x <= 100; x += 1) g.lineTo(x * k, (riverY(x) + o0) * k);
+    for (let x = 100; x >= 0; x -= 1) g.lineTo(x * k, (riverY(x) + o1) * k);
+    g.closePath(); g.fillStyle = col; g.fill();
+  };
+  band(-9.5, 9.5, '#B3D6A3');
+  band(-RIVER_HALF - .4, RIVER_HALF + .4, '#D9D2BE');
+  band(-RIVER_HALF, RIVER_HALF, '#5E9FCB');
+  const line = (off, col, w) => { g.beginPath(); for (let x = 0; x <= 100; x++) g.lineTo(x * k, (riverY(x) + off) * k); g.strokeStyle = col; g.lineWidth = w; g.stroke(); };
+  line(6.5, '#E9E2CF', 9); line(-6.5, '#E9E2CF', 9);          // 강변 산책로
+  line(11, 'rgba(60,70,80,.25)', 22); line(-11, 'rgba(60,70,80,.25)', 22); // 고가 그림자
+  const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; return t;
+}
+
+function init3D() {
+  if (typeof THREE === 'undefined') { $('#view3d').innerHTML = '<p style="padding:20px;font-size:13px">3D 그림 도구(Three.js)를 불러오지 못했어요.</p>'; return; }
+  const box = $('#view3d');
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(box.clientWidth, box.clientHeight);
+  box.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, box.clientWidth / box.clientHeight, .1, 100);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x6d8a64, .55));
+  const sun = new THREE.DirectionalLight(0xffffff, .5); sun.position.set(-6, 10, 4); scene.add(sun);
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(100 * S, 60 * S), new THREE.MeshLambertMaterial({ map:groundTexture() }));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+
+  const concrete = new THREE.MeshLambertMaterial({ color:0xA7AFB4 });
+  const darkDeck = new THREE.MeshLambertMaterial({ color:0x6F7A82 });
+  // 다리
+  BRIDGES.forEach(b => {
+    const len = 13 * S, z = (riverY(b.x) - 30) * S, x = (b.x - 50) * S;
+    const deck = (h, w, m) => { const d = new THREE.Mesh(new THREE.BoxGeometry(w, .05, len), m); d.position.set(x, h, z); scene.add(d); };
+    deck(b.double ? .5 : .38, .26, b.double ? darkDeck : concrete);
+    if (b.double) deck(.14, .2, concrete);           // 잠수교(아래층)
+    for (let i = -2; i <= 2; i++) { const p = new THREE.Mesh(new THREE.BoxGeometry(.06, b.double ? .5 : .38, .06), concrete); p.position.set(x, (b.double ? .5 : .38) / 2, z + i * len / 5); scene.add(p); }
+  });
+  // 고가도로(올림픽대로, 강변북로)
+  [11, -11].forEach(off => {
+    for (let x = 0; x < 100; x += 2) {
+      const a = toV(x, riverY(x) + off, .45), b = toV(x + 2, riverY(x + 2) + off, .45);
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(a.distanceTo(b) + .01, .05, .34), darkDeck);
+      seg.position.copy(a).add(b).multiplyScalar(.5); seg.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x); scene.add(seg);
+      if (x % 4 === 0) { const p = new THREE.Mesh(new THREE.BoxGeometry(.07, .45, .07), concrete); p.position.set(a.x, .225, a.z); scene.add(p); }
+    }
+  });
+  // 나들목 지하보도 입구
+  const tun = new THREE.Mesh(new THREE.BoxGeometry(.5, .28, (13.2 - 9) * S), new THREE.MeshLambertMaterial({ color:0x8C8F86, transparent:true, opacity:.55 }));
+  tun.position.copy(toV(55, riverY(55) + 11.1, .14)); scene.add(tun);
+  // 나무(그늘): 여의도에 많이
+  const treeG = new THREE.ConeGeometry(.13, .38, 7), treeM = new THREE.MeshLambertMaterial({ color:0x3F8A4A });
+  const rnd = (i => () => (i = (i * 9301 + 49297) % 233280) / 233280)(7);
+  for (let i = 0; i < 70; i++) {
+    const inA = i < 40, x = inA ? 8 + rnd() * 16 : rnd() * 100, off = (inA ? 1 : (rnd() > .5 ? 1 : -1)) * (7.6 + rnd() * 1.9);
+    if (!inA && Math.abs(x - 50) < 2) continue;
+    const t = new THREE.Mesh(treeG, treeM); t.position.copy(toV(x, riverY(x) + off, .19)); scene.add(t);
+  }
+  // 건물
+  const bm = new THREE.MeshLambertMaterial({ color:0xE4E8EA });
+  for (let i = 0; i < 110; i++) {
+    const x = rnd() * 100, side = rnd() > .5 ? 1 : -1, off = side * (14 + rnd() * 15), y = riverY(x) + off;
+    if (y < 1 || y > 59) continue;
+    const h = .15 + rnd() * rnd() * 1.4, w = .25 + rnd() * .35;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * (.7 + rnd() * .6)), bm); m.position.copy(toV(x, y, h / 2)); scene.add(m);
+  }
+  // 빗줄기
+  const N = 900, pos = new Float32Array(N * 6);
+  for (let i = 0; i < N; i++) { const x = (rnd() - .5) * 20, y = rnd() * 6, z = (rnd() - .5) * 12; pos.set([x, y, z, x - .03, y - .22, z], i * 6); }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color:0xDCE6F0, transparent:true, opacity:.7 }));
+  scene.add(rain);
+  // 달리는 사람
+  const runner = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.05, .07, .22, 10), new THREE.MeshStandardMaterial({ color:0xD9481A }));
+  body.position.y = .17;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.06, 12, 10), new THREE.MeshStandardMaterial({ color:0xF3D2B5 }));
+  head.position.y = .33;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.1, .14, 20), new THREE.MeshBasicMaterial({ color:0xffffff, side:THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .02;
+  runner.add(body, head, ring); scene.add(runner);
+
+  three = { renderer, scene, camera, rain, rainPos:pos, runner, route:null, curve:null, t:0, dir:1,
+            theta:-.6, phi:.95, radius:6, target:new THREE.Vector3(), drag:null, idle:0 };
+
+  // 손가락/마우스로 돌리기, 휠로 확대
+  box.addEventListener('pointerdown', e => { three.drag = { x:e.clientX, y:e.clientY }; box.setPointerCapture(e.pointerId); box.style.cursor = 'grabbing'; });
+  box.addEventListener('pointermove', e => {
+    if (!three.drag) return;
+    three.theta -= (e.clientX - three.drag.x) * .01;
+    three.phi = Math.min(1.45, Math.max(.25, three.phi - (e.clientY - three.drag.y) * .008));
+    three.drag = { x:e.clientX, y:e.clientY }; three.idle = 0;
+  });
+  const up = () => { three.drag = null; box.style.cursor = 'grab'; };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  box.addEventListener('wheel', e => { e.preventDefault(); three.radius = Math.min(14, Math.max(2.2, three.radius * (1 + e.deltaY * .001))); }, { passive:false });
+  build3DRoute();
+  apply3DWeather();
+}
+
+function build3DRoute() {
+  const T = three; if (!T) return;
+  if (T.route) { T.scene.remove(T.route); T.route.geometry.dispose(); }
+  if (T.roof) { T.scene.remove(T.roof); T.roof.geometry.dispose(); T.roof = null; }
+  const v = [];
+  routePts.forEach(p => { const q = toV(p[0], p[1], p[2] + .05); if (!v.length || v[v.length - 1].distanceTo(q) > .02) v.push(q); });
+  if (routeLoop && v[0].distanceTo(v[v.length - 1]) < .05) v.pop();
+  T.curve = new THREE.CatmullRomCurve3(v, routeLoop, 'centripetal');
+  T.route = new THREE.Mesh(new THREE.TubeGeometry(T.curve, 500, .045, 8, routeLoop),
+    new THREE.MeshStandardMaterial({ color:0xD9481A, emissive:0x7A1E04, emissiveIntensity:.5 }));
+  T.scene.add(T.route);
+  // 비 오는 날: 지붕 구간 위에 투명한 반투명 지붕 강조
+  const cov = routePts.filter(p => p[3]).map(p => toV(p[0], p[1], 0));
+  if (A.rain && cov.length > 1) {
+    const top = (selected || A.rec.id) === 'R1' ? .5 : (selected || A.rec.id) === 'R2' ? .45 : .28;
+    const cc = new THREE.CatmullRomCurve3(cov.map(q => new THREE.Vector3(q.x, top + .035, q.z)));
+    T.roof = new THREE.Mesh(new THREE.TubeGeometry(cc, 60, .2, 4, false), new THREE.MeshBasicMaterial({ color:0x9FD3FF, transparent:true, opacity:.35, depthWrite:false }));
+    T.scene.add(T.roof);
+  }
+  // 카메라가 코스를 바라보도록
+  const bb = new THREE.Box3().setFromPoints(v), size = bb.getSize(new THREE.Vector3());
+  bb.getCenter(T.target); T.radius = Math.max(4.5, Math.max(size.x, size.z) * 1.35 + 1.5);
+  T.t = 0; T.dir = 1;
+}
+
+function apply3DWeather() {
+  const T = three; if (!T) return;
+  const col = { clear:0xBFDDF3, hot:0xF6D2AE, humid:0xCFE3DE, cold:0xDDE3F5, rain:0x8E9BAA, dust:0xD8CCAF, wind:0xCDE7EF }[A.theme];
+  T.scene.background = new THREE.Color(col);
+  T.scene.fog = new THREE.Fog(col, 8, A.theme === 'dust' ? 14 : A.rain ? 16 : 26);
+  T.rain.visible = A.rain;
+  T.rain.material.opacity = A.heavy ? .85 : .55;
+}
+
+// ---------- 7. 움직임 (2D 점, 3D 러너, 빗줄기) ----------
+let view = '2d', last = performance.now(), t2 = 0, dir2 = 1;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function tick(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  const lapSec = 14;
+  if (view === '2d' && routeEl) {
+    t2 += dir2 * dt / lapSec;
+    if (routeLoop) t2 = (t2 + 1) % 1; else if (t2 > 1 || t2 < 0) { dir2 *= -1; t2 = Math.min(1, Math.max(0, t2)); }
+    const p = routeEl.getPointAtLength(t2 * routeLen);
+    runner2d.setAttribute('cx', p.x); runner2d.setAttribute('cy', p.y);
+  }
+  if (view === '3d' && three && three.curve) {
+    const T = three;
+    T.t += T.dir * dt / lapSec;
+    if (routeLoop) T.t = (T.t + 1) % 1; else if (T.t > 1 || T.t < 0) { T.dir *= -1; T.t = Math.min(1, Math.max(0, T.t)); }
+    const p = T.curve.getPointAt(T.t), q = T.curve.getPointAt(Math.min(1, Math.max(0, T.t + T.dir * .01)));
+    T.runner.position.set(p.x, p.y - .05, p.z);
+    T.runner.rotation.y = Math.atan2(q.x - p.x, q.z - p.z);
+    T.runner.children[0].position.y = .17 + Math.abs(Math.sin(now / 90)) * .02;
+    if (T.rain.visible) {
+      const a = T.rainPos, sp = (A.heavy ? 9 : 5) * dt;
+      for (let i = 0; i < a.length; i += 6) { a[i + 1] -= sp; a[i + 4] -= sp; if (a[i + 4] < 0) { a[i + 1] += 6; a[i + 4] += 6; } }
+      T.rain.geometry.attributes.position.needsUpdate = true;
+    }
+    T.idle += dt;
+    if (!T.drag && T.idle > 2 && !reduce) T.theta += dt * .12;
+    const r = T.radius;
+    T.camera.position.set(T.target.x + r * Math.sin(T.phi) * Math.cos(T.theta), T.target.y + r * Math.cos(T.phi), T.target.z + r * Math.sin(T.phi) * Math.sin(T.theta));
+    T.camera.lookAt(T.target);
+    T.renderer.render(T.scene, T.camera);
+  }
+  requestAnimationFrame(tick);
+}
+
+function setView(v) {
+  view = v;
+  $('#b2d').setAttribute('aria-pressed', v === '2d'); $('#b3d').setAttribute('aria-pressed', v === '3d');
+  $('#map2d').style.visibility = v === '2d' ? 'visible' : 'hidden';
+  $('#view3d').hidden = v !== '3d';
+  $('#capR').textContent = v === '3d' ? '드래그해서 돌려 보기' : (A.rain ? '진한 띠 = 지붕 있는 구간' : 'S = 출발점');
+  if (v === '3d' && !three) init3D();
+}
+$('#b2d').onclick = () => setView('2d');
+$('#b3d').onclick = () => setView('3d');
+
+// ---------- 8. 교사용 조종판 ----------
+const SLIDERS = [
+  ['temp','기온','°',-15,38,1], ['humidity','습도','%',10,100,1], ['precip','강수량','mm',0,40,.5],
+  ['wind','바람','m/s',0,15,.5], ['uv','자외선','',0,11,1], ['pm10','미세먼지','㎍',0,160,1],
+];
+$('#presets').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button type="button" data-k="${k}" aria-pressed="${k === presetKey}">${p.label}</button>`).join('');
+$('#presets').querySelectorAll('button').forEach(b => b.onclick = () => { presetKey = b.dataset.k; W = { ...PRESETS[presetKey] }; source = '예시 날씨'; selected = null; update(true); });
+$('#sliders').innerHTML = SLIDERS.map(([k, n, u, mn, mx, st]) => `<div class="sl"><label for="s-${k}">${n}<output id="o-${k}"></output></label><input type="range" id="s-${k}" min="${mn}" max="${mx}" step="${st}"></div>`).join('');
+SLIDERS.forEach(([k]) => $('#s-' + k).addEventListener('input', e => { W[k] = +e.target.value; presetKey = null; source = '직접 바꾼 날씨'; selected = null; update(false); }));
+
+$('#liveBtn').onclick = async () => {
+  const msg = $('#liveMsg'); msg.textContent = '불러오는 중…';
+  try {
+    const q = 'latitude=37.52&longitude=126.98&timezone=Asia%2FSeoul';
+    const [r1, r2] = await Promise.all([
+      fetch(`https://api.open-meteo.com/v1/forecast?${q}&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&daily=uv_index_max&wind_speed_unit=ms&forecast_days=1`).then(r => r.json()),
+      fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&current=pm10`).then(r => r.json()).catch(() => null),
+    ]);
+    const c = r1.current;
+    W = { temp:Math.round(c.temperature_2m), humidity:Math.round(c.relative_humidity_2m), precip:c.precipitation,
+          wind:Math.round(c.wind_speed_10m * 10) / 10, uv:Math.round(r1.daily.uv_index_max[0]), pm10:r2 ? Math.round(r2.current.pm10) : 30 };
+    presetKey = null; source = '실시간 · Open-Meteo'; selected = null; update(true);
+    msg.textContent = '서울 한강의 지금 날씨를 불러왔어요.';
+  } catch (e) {
+    msg.textContent = '이 미리보기 화면에서는 외부 인터넷 연결이 막혀 있어요. 파일을 내려받아 컴퓨터 브라우저로 열면 실시간 날씨를 불러올 수 있어요.';
+  }
+};
+
+// ---------- 9. 모두 다시 그리기 ----------
+let A = analyze(W);
+function update(syncSliders) {
+  A = analyze(W);
+  if (selected && !A.courses.some(c => c.id === selected)) selected = null;
+  if (!selected) selected = A.rec.id;
+  renderWeather(W, A); renderHero(A); renderCourses(A); renderTips(A); renderRules(A);
+  drawRoute(); apply3DWeather();
+  $('#presets').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === presetKey));
+  SLIDERS.forEach(([k, n, u]) => { if (syncSliders) $('#s-' + k).value = W[k]; $('#o-' + k).textContent = W[k] + u; });
+  setView(view);
+}
+
+// 휴대폰 크기를 화면에 맞추기
+function fitPhone() {
+  const col = $('#holder').parentElement;
+  const s = Math.min(1, col.clientWidth / 426, Math.max(.62, (innerHeight - 40) / 898));
+  $('#phone').style.transform = `scale(${s})`;
+  $('#holder').style.width = 426 * s + 'px'; $('#holder').style.height = 898 * s + 'px';
+}
+addEventListener('resize', fitPhone);
+fitPhone();
+drawBase2D();
+update(true);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
